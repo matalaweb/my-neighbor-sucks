@@ -116,3 +116,52 @@ Never run `noise:demo:provision` or `noise:storage:ensure-buckets` in production
 - Redeploy the previous successful deployment from the Cloud console or with `cloud deploy`. Always follow a deploy with `cloud deploy:monitor -n`.
 - The current migrations only create tables. If a future release adds a destructive migration (dropping or renaming a column or table), take a database backup first and make the release backward-compatible: expand in one release, contract in a later one. Rolling back the code does not undo a destructive migration.
 - Device credentials, configuration revisions and stored evidence are unaffected by a code rollback.
+
+## Current production deployment (2026-10-08)
+
+Provisioned with the Cloud CLI on the smallest feasible footprint (single household, one Pi).
+
+| Item | Value |
+| - | - |
+| Application | `my-neighbor-sucks` (`app-a2efaf33-a729-4d6f-9c31-8e2eff83f75a`), repo `matalaweb/my-neighbor-sucks`, branch `main`, push-to-deploy on |
+| Environment | `production` (`env-a2efaf35-ae84-4643-964f-e740a6b95a99`), region us-east-2, PHP 8.5 (Cloud default), Node 26 |
+| URL | https://my-neighbor-sucks-production-1z64fu.laravel.cloud |
+| Compute | 1 × `flex.m-1vcpu-1gb`, min = max = 1 replica, scale-to-zero **off**, scheduler **on** |
+| Background processes | three custom `queue:work redis` processes: `recordings` (timeout 900), `exports` (timeout 900), `rollups,default` (timeout 150) |
+| Database | Laravel MySQL cluster `my-neighbor-sucks`, `mysql-flex-512mb`, 5 GB, automatic upsizing, daily backups kept 7 days; schema `production` |
+| Cache / queues / sessions | Laravel Valkey `my_neighbor_sucks`, `valkey-flex-250mb`, eviction `volatile-lru` (queue lists have no TTL, so they are never evicted), auto-upgrade on |
+| Object storage | private R2 bucket `my-neighbor-sucks-evidence` |
+
+Why the storage variables are set by hand: the CLI can't attach a bucket as the environment's default disk. Instead, a read/write bucket key `app-runtime` was created and these were set manually:
+
+- `FILESYSTEM_DISK=s3`
+- `AWS_BUCKET=fls-a2efaf64-2b8a-4a17-9279-576da883150a` (the R2 bucket name is the Cloud bucket **ID**, not its display name)
+- `AWS_ENDPOINT=https://367be3a2035528943240074d0096e0cd.r2.cloudflarestorage.com`
+- `AWS_DEFAULT_REGION=auto`
+- `AWS_USE_PATH_STYLE_ENDPOINT=true`
+- `AWS_ACCESS_KEY_ID` as an environment variable, and `AWS_SECRET_ACCESS_KEY` as an encrypted organization secret attached to the environment
+
+A bucket key's secret is shown only once, at creation. To rotate it:
+
+1. Create a new key with `cloud bucket-key:create … --json --show-sensitive`.
+2. Update the secret and `AWS_ACCESS_KEY_ID`.
+3. Redeploy.
+4. Delete the old key.
+
+The key named `app` was created alongside the bucket. Its secret was never returned, so it is unused and can be deleted.
+
+Other environment settings:
+
+- `APP_ENV=production`, `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true`
+- `CACHE_STORE`, `QUEUE_CONNECTION` and `SESSION_DRIVER` set to `redis`
+- `MAIL_MAILER=log`. Invitations and password-reset mail are not delivered until a mail provider such as Resend is attached.
+
+Verified after the first deploy:
+
+- `/up` and `/health/ready` return 200, with database, cache and object storage all OK.
+- Secure session cookies are set.
+- Queued jobs drain within seconds.
+- The scheduler mutex appears every minute.
+- Presigned PUT, GET and DELETE against the bucket succeed.
+
+Estimated cost is about $18–20/month (compute about $12, MySQL about $5–6, Valkey about $0.40–2, storage usage-based).
