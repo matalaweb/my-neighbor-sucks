@@ -1,0 +1,66 @@
+{
+  "request_id": "019a0f3d-5f6a-7cad-9e1f-2a3b4c5d6e7f",
+  "server_received_at": "2026-10-08T12:16:01.000Z",
+  "revision": 4,
+  "sha256": "3b1f5c0d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c",
+  "issued_at": "2026-10-08T12:00:00.000Z",
+  "applied_revision": 3,
+  "configuration": {
+    "schema_version": 1,
+    "device_id": "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d",
+    "revision": 4,
+    "reporting_interval_seconds": 30,
+    "heartbeat_interval_seconds": 60,
+    "measurement_interval_ms": 1000,
+    "channels": [
+      {
+        "channel": "mic-1",
+        "enabled": true,
+        "metrics": ["laeq_db", "lafmax_db", "lceq_db", "lcpeak_db", "low_frequency_leq_db", "rms_dbfs"],
+        "bands_enabled": false,
+        "measurement_profile_id": "2fc235ef-6f5b-48d1-8d35-083dfdd5a6e9",
+        "deployment_id": "ab6de18e-f8aa-4444-aed3-71d3464f07ea",
+        "calibration_id": "0e745c21-fc8f-40da-9113-7a158c913fc6",
+        "calibration_state": "calibrated"
+      }
+    ],
+    "recording": {
+      "enabled": true,
+      "format": "audio/flac",
+      "pre_roll_seconds": 10,
+      "post_roll_seconds": 30,
+      "max_segment_duration_seconds": 600
+    },
+    "detection": {
+      "rule_version": "owner-rules-v1",
+      "absolute": { "enabled": false, "metric": "lafmax_db", "level_db": null },
+      "baseline_relative": { "enabled": true, "metric": "lafmax_db", "delta_db": 15.0, "baseline_window_seconds": 300 },
+      "min_event_duration_ms": 1000,
+      "merge_gap_ms": 5000,
+      "observation_period_until": "2026-10-15T00:00:00.000Z"
+    },
+    "local_retention": { "measurement_days": 7, "audio_days": 7, "max_disk_usage_percent": 80 }
+  },
+  "provenance": {
+    "measurement_profiles": [
+      {
+        "id": "2fc235ef-6f5b-48d1-8d35-083dfdd5a6e9",
+        "channel": "mic-1",
+        "revision": 1,
+        "calibration_state": "calibrated",
+        "supported_metrics": ["laeq_db", "lafmax_db", "lceq_db", "lcpeak_db", "low_frequency_leq_db", "rms_dbfs"],
+        "sample_rate_hz": 48000,
+        "gain_db": 12.0,
+        "low_frequency_band_hz": [20.0, 125.0],
+        "band_definitions": null,
+        "content_hash": "<sha256>"
+      }
+    ],
+    "deployments": [
+      { "id": "ab6de18e-f8aa-4444-aed3-71d3464f07ea", "revision": 1, "effective_at": "2026-10-01T00:00:00.000Z", "content_hash": "<sha256>" }
+    ],
+    "calibrations": [
+      { "id": "0e745c21-fc8f-40da-9113-7a158c913fc6", "channel": "mic-1", "revision": 1, "calibration_state": "calibrated", "content_hash": "<sha256>" }
+    ]
+  }
+}

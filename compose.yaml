@@ -1,0 +1,141 @@
+# Local development stack for Noise Monitor.
+# Production runs on Laravel Cloud; nothing here is used there.
+name: noise-monitor
+
+x-app-base: &app-base
+  image: noise-monitor-dev:latest
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  volumes:
+    - ./:/app
+  environment:
+    # Optional: create the first owner on first boot (see .env.example).
+    NOISE_INITIAL_OWNER_EMAIL: "${NOISE_INITIAL_OWNER_EMAIL:-}"
+    NOISE_INITIAL_OWNER_PASSWORD: "${NOISE_INITIAL_OWNER_PASSWORD:-}"
+    NOISE_INITIAL_ACCOUNT: "${NOISE_INITIAL_ACCOUNT:-Household}"
+    NOISE_INITIAL_PROPERTY: "${NOISE_INITIAL_PROPERTY:-Home}"
+
+x-app: &app
+  <<: *app-base
+  depends_on:
+    init:
+      condition: service_completed_successfully
+
+services:
+  # One-shot setup: dependencies, assets, APP_KEY, migrations, buckets.
+  # `docker compose up` on a fresh checkout is all that is needed.
+  init:
+    <<: *app-base
+    command: ["sh", "/app/docker/init.sh"]
+    healthcheck:
+      disable: true
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    ports:
+      - "${FORWARD_APP_PORT:-8088}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # Verification/media work is isolated from exports and rollups (spec §17).
+  queue-recordings:
+    <<: *app
+    healthcheck:
+      disable: true
+    command: php artisan queue:work redis --queue=recordings --sleep=1 --tries=5 --backoff=10 --timeout=900 --memory=512 --max-time=3600
+    restart: unless-stopped
+
+  queue-exports:
+    <<: *app
+    healthcheck:
+      disable: true
+    command: php artisan queue:work redis --queue=exports --sleep=1 --tries=3 --backoff=30 --timeout=900 --max-time=3600
+    restart: unless-stopped
+
+  queue-default:
+    <<: *app
+    healthcheck:
+      disable: true
+    command: php artisan queue:work redis --queue=rollups,default --sleep=1 --tries=5 --backoff=5 --timeout=150 --max-time=3600
+    restart: unless-stopped
+
+  scheduler:
+    <<: *app
+    healthcheck:
+      disable: true
+    command: php artisan schedule:work
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-root-local-only}"
+      MYSQL_DATABASE: "${DB_DATABASE:-noise_monitor}"
+      MYSQL_USER: "${DB_USERNAME:-noise}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:-noise-local-only}"
+    command: ["--default-time-zone=+00:00"]
+    ports:
+      - "${FORWARD_DB_PORT:-33068}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-root-local-only}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "${FORWARD_REDIS_PORT:-63790}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible private object storage (Laravel Cloud uses an S3-compatible
+  # bucket in production). MinIO no longer publishes community images, so the
+  # local stack uses RustFS, which speaks the same S3 API. Buckets are created
+  # by `php artisan noise:storage:ensure-buckets` (see docker/entrypoint notes).
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: "${AWS_ACCESS_KEY_ID:-s3-local-only}"
+      RUSTFS_SECRET_KEY: "${AWS_SECRET_ACCESS_KEY:-s3-local-only-secret}"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${FORWARD_S3_PORT:-9100}:9000"
+      - "${FORWARD_S3_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health || wget -qO- http://127.0.0.1:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "${FORWARD_MAILPIT_PORT:-8126}:8025"
+
+volumes:
+  mysql-data:
+  redis-data:
+  s3-data:
