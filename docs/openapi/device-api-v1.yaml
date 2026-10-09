@@ -667,7 +667,11 @@ components:
         rms_dbfs = digital RMS relative to full scale (dBFS, never dBA).
     QualityFlag:
       type: string
-      enum: [clipping, audio_dropout, microphone_disconnected, unsynchronized_clock, below_noise_floor, invalid_calibration, processing_error, incomplete_interval]
+      enum: [clipping, audio_dropout, microphone_disconnected, unsynchronized_clock, below_noise_floor, invalid_calibration, processing_error, incomplete_interval, max_duration_reached]
+      description: >-
+        `max_duration_reached` is used on finalized events only: the event was still above threshold
+        when `detection.max_event_duration_seconds` elapsed, so `ended_at` is where the device ended
+        it, not where the noise stopped.
     Level:
       type: [number, 'null']
       minimum: -200
@@ -1047,6 +1051,13 @@ components:
                 baseline_window_seconds: { type: integer }
             min_event_duration_ms: { type: integer }
             merge_gap_ms: { type: integer }
+            max_event_duration_seconds:
+              type: integer
+              minimum: 60
+              maximum: 14400
+              description: >-
+                Optional (default 600). An event still above threshold after this many seconds is
+                finalized with `max_duration_reached`, and the device re-learns its baseline.
             observation_period_until: { type: [string, 'null'], format: date-time }
         local_retention:
           type: object

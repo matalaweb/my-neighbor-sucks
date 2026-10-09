@@ -174,6 +174,6 @@ class PublicDeviceDashboard
         $seconds = max(1, (int) round($milliseconds / 1000));
         $label = $seconds < 60 ? "{$seconds} s" : intdiv($seconds, 60).' min '.($seconds % 60).' s';
 
-        return $event->observationInterrupted() ? "≥ {$label}" : $label;
+        return $event->durationIsLowerBound() ? "≥ {$label}" : $label;
     }
 }

@@ -5,12 +5,14 @@ use App\Filament\Resources\Devices\Pages\ViewDevice;
 use App\Filament\Resources\Devices\RelationManagers\CalibrationsRelationManager;
 use App\Filament\Resources\Devices\RelationManagers\ConfigurationsRelationManager;
 use App\Filament\Resources\Devices\RelationManagers\ProfilesRelationManager;
+use App\Services\Devices\DeviceConfigurationService;
 use App\Support\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Tests\Support\DeviceFixture;
@@ -122,4 +124,28 @@ it('no longer lets owners attach frequency-response files to calibrations', func
         ->assertHasActionErrors(['purpose']);
 
     expect($this->fixture->calibration->attachments()->count())->toBe(0);
+});
+
+it('publishes the maximum event duration and keeps it within bounds', function (): void {
+    configurationsManager($this->fixture)
+        ->mountAction(TestAction::make('publish')->table())
+        ->assertSchemaStateSet(['data.max_event_duration_seconds' => 600])
+        ->fillForm(['data.max_event_duration_seconds' => 1800])
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    expect($this->fixture->device->configurations()->where('revision', 2)->sole()->document['detection']['max_event_duration_seconds'])->toBe(1800);
+
+    $service = app(DeviceConfigurationService::class);
+    $settings = $service->settingsFromDocument($this->fixture->device->latestConfiguration()->document);
+
+    expect(fn () => $service->publish($this->fixture->device, [...$settings, 'max_event_duration_seconds' => 30], $this->fixture->owner))
+        ->toThrow(ValidationException::class);
+});
+
+it('defaults the maximum event duration for revisions published before it existed', function (): void {
+    $legacy = $this->fixture->configuration->document;
+    unset($legacy['detection']['max_event_duration_seconds']);
+
+    expect(app(DeviceConfigurationService::class)->settingsFromDocument($legacy)['max_event_duration_seconds'])->toBe(600);
 });

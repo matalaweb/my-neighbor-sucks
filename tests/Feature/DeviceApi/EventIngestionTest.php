@@ -88,6 +88,18 @@ it('marks a finalized event whose observation stopped as interrupted, not as a n
         ->and($normal->observationInterrupted())->toBeFalse();
 });
 
+it('marks an event ended at the maximum duration as a lower-bound duration', function (): void {
+    $start = $this->start->subMinutes(20);
+    postEvent($this, $this->fixture, $this->fixture->event($this->eventId, 1, $start, $start->addMinutes(10), ['quality_flags' => ['max_duration_reached']]))
+        ->assertCreated();
+
+    $event = NoiseEvent::query()->sole();
+    expect($event->endedAtMaxDuration())->toBeTrue()
+        ->and($event->observationInterrupted())->toBeFalse()
+        ->and($event->durationIsLowerBound())->toBeTrue()
+        ->and($event->durationMs())->toBe(600000);
+});
+
 it('annotations never mutate original revision payloads', function (): void {
     postEvent($this, $this->fixture, $this->fixture->event($this->eventId, 1, $this->start, $this->start->addSeconds(5)))->assertCreated();
     $revision = NoiseEventRevision::query()->sole();

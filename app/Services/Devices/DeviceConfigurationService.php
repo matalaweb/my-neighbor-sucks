@@ -23,6 +23,13 @@ use Illuminate\Validation\ValidationException;
  */
 class DeviceConfigurationService
 {
+    /** Events still above threshold after this long are ended (flag max_duration_reached) and the baseline re-learnt. */
+    public const DEFAULT_MAX_EVENT_DURATION_SECONDS = 600;
+
+    public const MIN_MAX_EVENT_DURATION_SECONDS = 60;
+
+    public const MAX_MAX_EVENT_DURATION_SECONDS = 14400;
+
     public const DEFAULT_CHANNEL = 'mic-1';
 
     public function __construct(private readonly AuditLogger $audit) {}
@@ -58,6 +65,7 @@ class DeviceConfigurationService
             'baseline_window_seconds' => 300,
             'min_event_duration_ms' => 1000,
             'merge_gap_ms' => 5000,
+            'max_event_duration_seconds' => self::DEFAULT_MAX_EVENT_DURATION_SECONDS,
             'observation_period_until' => null,
             'local_measurement_retention_days' => 7,
             'local_audio_retention_days' => 7,
@@ -120,6 +128,7 @@ class DeviceConfigurationService
                 ],
                 'min_event_duration_ms' => (int) $settings['min_event_duration_ms'],
                 'merge_gap_ms' => (int) $settings['merge_gap_ms'],
+                'max_event_duration_seconds' => (int) ($settings['max_event_duration_seconds'] ?? self::DEFAULT_MAX_EVENT_DURATION_SECONDS),
                 // Thresholds are owner choices, not legal or universal limits.
                 'observation_period_until' => blank($settings['observation_period_until'] ?? null) ? null : Rfc3339::format(CarbonImmutable::parse($settings['observation_period_until'])),
             ],
@@ -223,6 +232,12 @@ class DeviceConfigurationService
             $errors['detection.baseline_relative.delta_db'][] = 'Choose a level difference for the baseline-relative rule, or disable it.';
         }
 
+        $maxEventDuration = $detection['max_event_duration_seconds'] ?? self::DEFAULT_MAX_EVENT_DURATION_SECONDS;
+
+        if ($maxEventDuration < self::MIN_MAX_EVENT_DURATION_SECONDS || $maxEventDuration > self::MAX_MAX_EVENT_DURATION_SECONDS) {
+            $errors['detection.max_event_duration_seconds'][] = 'Must be between '.self::MIN_MAX_EVENT_DURATION_SECONDS.' and '.self::MAX_MAX_EVENT_DURATION_SECONDS.' seconds.';
+        }
+
         if ($capabilities === null) {
             $warnings[] = 'The device has not reported capabilities yet; channel/metric support could not be checked.';
         }
@@ -299,6 +314,7 @@ class DeviceConfigurationService
             'recording.format' => 'recording_format',
             'detection.absolute.level_db' => 'absolute_level_db',
             'detection.baseline_relative.delta_db' => 'relative_delta_db',
+            'detection.max_event_duration_seconds' => 'max_event_duration_seconds',
         ];
         $channelKeys = array_keys($settings['channels'] ?? []);
         $mapped = [];
@@ -364,6 +380,7 @@ class DeviceConfigurationService
             'baseline_window_seconds' => $document['detection']['baseline_relative']['baseline_window_seconds'],
             'min_event_duration_ms' => $document['detection']['min_event_duration_ms'],
             'merge_gap_ms' => $document['detection']['merge_gap_ms'],
+            'max_event_duration_seconds' => $document['detection']['max_event_duration_seconds'] ?? self::DEFAULT_MAX_EVENT_DURATION_SECONDS,
             'observation_period_until' => $document['detection']['observation_period_until'],
             'local_measurement_retention_days' => $document['local_retention']['measurement_days'],
             'local_audio_retention_days' => $document['local_retention']['audio_days'],

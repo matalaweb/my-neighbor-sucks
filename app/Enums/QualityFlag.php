@@ -18,6 +18,7 @@ enum QualityFlag: string implements HasLabel
     case InvalidCalibration = 'invalid_calibration';
     case ProcessingError = 'processing_error';
     case IncompleteInterval = 'incomplete_interval';
+    case MaxDurationReached = 'max_duration_reached';
 
     public function bit(): int
     {
@@ -30,6 +31,7 @@ enum QualityFlag: string implements HasLabel
             self::InvalidCalibration => 32,
             self::ProcessingError => 64,
             self::IncompleteInterval => 128,
+            self::MaxDurationReached => 256,
         };
     }
 
@@ -44,6 +46,7 @@ enum QualityFlag: string implements HasLabel
             self::InvalidCalibration => 'Invalid calibration',
             self::ProcessingError => 'Processing error',
             self::IncompleteInterval => 'Incomplete interval',
+            self::MaxDurationReached => 'Ended at maximum event duration',
         };
     }
 

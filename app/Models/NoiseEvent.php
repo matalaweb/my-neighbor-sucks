@@ -127,6 +127,21 @@ class NoiseEvent extends Model
         return ! $this->isOpen() && in_array(QualityFlag::IncompleteInterval, $this->qualityFlagList(), true);
     }
 
+    /**
+     * A finalized event the agent ended because it was still above threshold at the configured
+     * maximum event duration: the sound may have continued past ended_at.
+     */
+    public function endedAtMaxDuration(): bool
+    {
+        return ! $this->isOpen() && in_array(QualityFlag::MaxDurationReached, $this->qualityFlagList(), true);
+    }
+
+    /** The real duration may be longer than ended_at - started_at. */
+    public function durationIsLowerBound(): bool
+    {
+        return $this->observationInterrupted() || $this->endedAtMaxDuration();
+    }
+
     /** @return list<QualityFlag> */
     public function qualityFlagList(): array
     {

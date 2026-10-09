@@ -78,8 +78,12 @@ class NoiseEventResource extends Resource
                     ->formatStateUsing(fn ($state, NoiseEvent $record): string => LocalTime::displayShort($state, $record->property->timezone))
                     ->description(fn (NoiseEvent $record): string => $record->device->name.' · '.$record->channel),
                 TextColumn::make('duration')
-                    ->state(fn (NoiseEvent $record): string => $record->isOpen() ? 'open' : ($record->observationInterrupted() ? '≥ ' : '').number_format($record->durationMs() / 1000, 1).' s')
-                    ->description(fn (NoiseEvent $record): ?string => $record->observationInterrupted() ? 'observation stopped' : null),
+                    ->state(fn (NoiseEvent $record): string => $record->isOpen() ? 'open' : ($record->durationIsLowerBound() ? '≥ ' : '').number_format($record->durationMs() / 1000, 1).' s')
+                    ->description(fn (NoiseEvent $record): ?string => match (true) {
+                        $record->observationInterrupted() => 'observation stopped',
+                        $record->endedAtMaxDuration() => 'max duration reached',
+                        default => null,
+                    }),
                 TextColumn::make('trigger_value_db')
                     ->label('Trigger')
                     ->sortable()

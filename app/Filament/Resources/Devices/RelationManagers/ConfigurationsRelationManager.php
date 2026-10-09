@@ -223,6 +223,14 @@ class ConfigurationsRelationManager extends RelationManager
                     TextInput::make('data.baseline_window_seconds')->numeric()->suffix('s'),
                     TextInput::make('data.min_event_duration_ms')->numeric()->suffix('ms'),
                     TextInput::make('data.merge_gap_ms')->numeric()->suffix('ms'),
+                    TextInput::make('data.max_event_duration_seconds')
+                        ->label('Max event duration')
+                        ->numeric()
+                        ->suffix('s')
+                        ->required()
+                        ->minValue(DeviceConfigurationService::MIN_MAX_EVENT_DURATION_SECONDS)
+                        ->maxValue(DeviceConfigurationService::MAX_MAX_EVENT_DURATION_SECONDS)
+                        ->helperText('An event still above threshold after this long is ended and the device re-learns its baseline at the new level (e.g. a door left open).'),
                 ])->columns(3),
             Section::make('Local retention on the Pi')->schema([
                 TextInput::make('data.local_measurement_retention_days')->numeric()->suffix('days'),
