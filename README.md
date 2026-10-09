@@ -1,5 +1,27 @@
 # Noise Monitor
 
+## Why this exists
+
+I hate my neighbor.
+
+Not in a vague, passive-aggressive, "we should really talk sometime" way. I hate him in the specific, measurable, logged-to-the-microsecond way that only someone with a Raspberry Pi and a grudge can.
+
+Here's the deal. My neighbor drives a goddamn shitbox. I don't know what's holding it together, but I know for a fucking fact it isn't a muffler, because there isn't one. There's just a pipe. An open, screaming, rusted-out pipe that turns every cold start into an artillery barrage and every trip down the driveway into a NASCAR qualifying lap. The windows rattle. The dog loses her mind. Conversations stop mid-sentence. Sleep? Gone. Thanks, buddy.
+
+And it's not just the car. It's how he drives it. He drives like a complete shithead. He doesn't idle out of the driveway like a normal human being. He revs it. He *revs* it, in the driveway, for no reason, like there's a crowd out there that is dying to hear what a lifetime of bad decisions sounds like at 7,000 RPM. Then he launches it down the street like he's late to his own sentencing hearing, and the whole goddamn neighborhood gets to enjoy the Doppler effect.
+
+So I did the responsible thing. I went to the HOA.
+
+The HOA — the same HOA that will send me a strongly worded letter if my trash can is visible from the street for eleven minutes past pickup — looked me dead in the eye and said, more or less, "We haven't noticed anything." Of course you haven't. You don't live here. You aren't woken up at 6:40 a.m. by a four-wheeled war crime warming up thirty feet from your bedroom. They don't believe me. They think I'm exaggerating. They think I'm *that* neighbor.
+
+Fine. Fuck it. I'm a software developer. You want proof? I'll give you proof.
+
+So I built this: a full-blown, multi-tenant, queue-backed, S3-archived acoustic surveillance platform with a documented OpenAPI contract, energy-correct decibel rollups, append-only review annotations, and tamper-evident evidence bundles with SHA-256 manifests. Is this proportionate? Absolutely not. Is it overkill? Spectacularly. Will the HOA have to sit down and read a PDF full of timestamped LAFmax spikes that line up perfectly with every time that shitbox turns over? **Yes. Yes they fucking will.**
+
+Every rev. Every launch. Every 6:40 a.m. cold start. Measured, charted, recorded, hashed, and exported. Let's see you "not notice" that.
+
+## What it actually does
+
 A private Laravel application that receives sound measurements and event recordings from a Raspberry Pi 4B, makes disturbances easy to review, and exports traceable reports. The first installation monitors a home affected by loud vehicle noise from an adjacent driveway. The app works today with a simulated device; the Python capture agent is a separate project.
 
 **What it is not.** Noise Monitor is a DIY monitoring system. Its readings do not come from a certified or regulatory sound level meter, they do not establish a legal violation, and the app never attributes a source (a vehicle, a neighbour) automatically. Reports describe the equipment and calibration status that was actually used. "Confirmed disturbance" means a reviewer confirmed that a disturbance happened, nothing more.
