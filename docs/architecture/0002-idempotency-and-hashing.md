@@ -37,7 +37,12 @@ order, has no whitespace, and encodes floats in shortest round-trip form with a
   batch_id, records}` with records sorted by (channel, boot_id, sequence).
   `sent_at` is excluded because it is transport metadata.
 * Event revision hash: the canonical revision (`EventPayloadParser`).
-* Recording declaration hash and configuration document hash likewise.
+* Recording declaration hash and configuration document hash likewise. The
+  configuration hash is computed on the document's stored form (a JSON round
+  trip, exactly what `GET /configuration` serves), so an agent can verify it
+  by re-encoding the received document. Revisions published before
+  2026-10-09 hashed the in-memory build, in which whole-number dB settings
+  were floats (`15.0`, served as `15`); they are left unchanged (immutable).
 
 ### Batch ingestion (`App\Services\Ingestion\IngestMeasurements`)
 

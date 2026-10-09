@@ -118,6 +118,15 @@ class NoiseEvent extends Model
         return (int) round(($this->ended_at->getTimestampMs() - $this->started_at->getTimestampMs()));
     }
 
+    /**
+     * A finalized event whose agent stopped observing it (data loss, microphone disconnect,
+     * restart): ended_at is where observation stopped, not where the sound ended.
+     */
+    public function observationInterrupted(): bool
+    {
+        return ! $this->isOpen() && in_array(QualityFlag::IncompleteInterval, $this->qualityFlagList(), true);
+    }
+
     /** @return list<QualityFlag> */
     public function qualityFlagList(): array
     {

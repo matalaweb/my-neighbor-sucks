@@ -22,6 +22,9 @@ class DeviceCalibration extends Model
 
     public const UPDATED_AT = null;
 
+    /** Attachments with this purpose are listed in device provenance and downloadable by the device. */
+    public const DEVICE_ATTACHMENT_PURPOSE = 'frequency_response';
+
     protected $fillable = [
         'account_id', 'device_id', 'channel', 'revision', 'calibration_state', 'reference_method',
         'reference_device', 'reference_level_db', 'reference_frequency_hz', 'sensitivity_mv_per_pa',

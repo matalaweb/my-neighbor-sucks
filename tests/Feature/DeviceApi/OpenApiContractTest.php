@@ -49,12 +49,12 @@ it('documents every device API route with the right method', function (): void {
     $routes = collect(Router::getRoutes()->getRoutes())
         ->filter(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/device/'));
 
-    expect($routes)->toHaveCount(9);
+    expect($routes)->toHaveCount(10);
 
     foreach ($routes as $route) {
         $path = preg_replace(
-            ['/\{eventUuid\}/', '/\{recordingUuid\}/'],
-            ['{event_uuid}', '{recording_uuid}'],
+            ['/\{eventUuid\}/', '/\{recordingUuid\}/', '/\{calibrationUuid\}/', '/\{attachmentUuid\}/'],
+            ['{event_uuid}', '{recording_uuid}', '{calibration_uuid}', '{attachment_uuid}'],
             '/'.substr($route->uri(), strlen('api/v1/device/')),
         );
         $method = strtolower(collect($route->methods())->reject(fn (string $m): bool => $m === 'HEAD')->first());

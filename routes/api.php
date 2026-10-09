@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DeviceApi\CalibrationAttachmentController;
 use App\Http\Controllers\DeviceApi\ConfigurationController;
 use App\Http\Controllers\DeviceApi\EventController;
 use App\Http\Controllers\DeviceApi\HeartbeatController;
@@ -34,6 +35,10 @@ Route::prefix('v1/device')
         Route::get('configuration', [ConfigurationController::class, 'show'])
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control'])
             ->name('configuration.show');
+
+        Route::get('calibrations/{calibrationUuid}/attachments/{attachmentUuid}', [CalibrationAttachmentController::class, 'show'])
+            ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control'])
+            ->name('calibrations.attachments.show');
 
         Route::post('configuration/acknowledgments', [ConfigurationController::class, 'acknowledge'])
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control', 'device.payload'])

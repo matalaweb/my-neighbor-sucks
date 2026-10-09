@@ -76,6 +76,18 @@ it('lets a later final revision close an event marked incomplete by a reviewer',
     expect(NoiseEvent::query()->sole()->detection_state->value)->toBe('finalized');
 });
 
+it('marks a finalized event whose observation stopped as interrupted, not as a normal end', function (): void {
+    $end = $this->start->addSeconds(12);
+    postEvent($this, $this->fixture, $this->fixture->event($this->eventId, 1, $this->start, $end, ['quality_flags' => ['audio_dropout', 'incomplete_interval']]))
+        ->assertCreated();
+    postEvent($this, $this->fixture, $this->fixture->event((string) Str::uuid(), 1, $this->start->addMinute(), $end->addMinute()))->assertCreated();
+
+    [$interrupted, $normal] = NoiseEvent::query()->orderBy('started_at')->get()->all();
+    expect($interrupted->observationInterrupted())->toBeTrue()
+        ->and($interrupted->durationMs())->toBe(12000)
+        ->and($normal->observationInterrupted())->toBeFalse();
+});
+
 it('annotations never mutate original revision payloads', function (): void {
     postEvent($this, $this->fixture, $this->fixture->event($this->eventId, 1, $this->start, $this->start->addSeconds(5)))->assertCreated();
     $revision = NoiseEventRevision::query()->sole();

@@ -90,6 +90,14 @@ info:
 
     Batch hash = canonical `{schema_version, batch_id, records}` where records
     are the canonical rows sorted by (`channel`, `boot_id`, `sequence`).
+
+    Configuration hash = canonical `configuration` object **exactly as served**
+    (decoded from the response JSON, no type coercion), so an agent can verify
+    `sha256` by re-encoding what it received. Revisions published before
+    2026-10-09 hashed an in-memory form in which whole-number dB settings were
+    floats (`15.0`, served as `15`); agents may additionally accept the hash
+    with `detection.absolute.level_db` and `detection.baseline_relative.delta_db`
+    coerced to floats.
     **`sent_at` is excluded** (transport metadata), so a retry with a new
     send time is the same batch.
 
@@ -193,6 +201,11 @@ paths:
         Requires ability `events:write`. Each revision must be a complete snapshot
         of the event. An open event has `ended_at: null`; a finalized event must
         have `ended_at`. The channel may not change between revisions.
+        If the agent stopped observing during the event (data loss, microphone
+        disconnect, process restart), it finalizes at the last observed second
+        and includes `incomplete_interval` (plus the cause flag, e.g.
+        `audio_dropout` or `microphone_disconnected`); `ended_at` is then where
+        observation stopped, not where the sound ended, and the UI shows it so.
         Uncalibrated profiles must report null absolute SPL summary values and
         may only trigger on `rms_dbfs`.
       parameters:
@@ -407,6 +420,44 @@ paths:
               schema: { $ref: '#/components/schemas/ConfigurationResult' }
               examples:
                 current: { externalValue: fixtures/responses/configuration-200.json }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /calibrations/{calibration_uuid}/attachments/{attachment_uuid}:
+    get:
+      tags: [Configuration]
+      operationId: downloadCalibrationAttachment
+      summary: Download a calibration's microphone frequency-response file
+      description: |
+        Requires ability `configuration:read`. Serves only attachments with
+        purpose `frequency_response` that belong to one of this device's
+        calibration records (e.g. a miniDSP UMIK-1 serial-specific calibration
+        file). Paths are listed in `provenance.calibrations[].attachments[].download_path`.
+        The agent must verify the bytes against the listed `sha256` (also sent as
+        `X-Content-SHA256`). No other attachment purposes are ever served to devices.
+      parameters:
+        - name: calibration_uuid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: attachment_uuid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: The exact stored bytes.
+          headers:
+            X-Content-SHA256:
+              description: Lowercase hex SHA-256 recorded when the file was stored.
+              schema: { type: string }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -967,16 +1018,83 @@ components:
           required: [revision, sha256, issued_at, configuration, provenance]
           properties:
             revision: { type: integer }
-            sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+            sha256:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+              description: Canonical hash of `configuration` exactly as served (see "Canonical payload hash").
             issued_at: { $ref: '#/components/schemas/Timestamp' }
             applied_revision: { type: [integer, 'null'] }
             configuration: { $ref: '#/components/schemas/ConfigurationDocument' }
             provenance:
               type: object
               properties:
-                measurement_profiles: { type: array, items: { type: object } }
-                deployments: { type: array, items: { type: object } }
-                calibrations: { type: array, items: { type: object } }
+                measurement_profiles: { type: array, items: { $ref: '#/components/schemas/ProvenanceProfile' } }
+                deployments: { type: array, items: { $ref: '#/components/schemas/ProvenanceDeployment' } }
+                calibrations: { type: array, items: { $ref: '#/components/schemas/ProvenanceCalibration' } }
+    ProvenanceProfile:
+      type: object
+      required: [id, channel, revision, calibration_state, supported_metrics, sample_rate_hz, content_hash]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/Channel' }
+        revision: { type: integer }
+        calibration_state: { type: string, enum: [uncalibrated, estimated, calibrated] }
+        microphone_model: { type: string }
+        microphone_serial: { type: [string, 'null'], description: "Agents may refuse to measure with a microphone whose serial differs." }
+        audio_interface: { type: [string, 'null'] }
+        gain_description: { type: [string, 'null'] }
+        calibration_application_method: { type: [string, 'null'] }
+        supported_metrics: { type: array, items: { $ref: '#/components/schemas/MetricName' } }
+        sample_rate_hz: { type: integer }
+        gain_db: { type: [number, 'null'] }
+        low_frequency_band_hz: { type: [array, 'null'], items: { type: number }, minItems: 2, maxItems: 2 }
+        band_definitions: { type: [object, 'null'] }
+        content_hash: { type: string }
+    ProvenanceDeployment:
+      type: object
+      required: [id, revision, effective_at, content_hash]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        revision: { type: integer }
+        effective_at: { $ref: '#/components/schemas/Timestamp' }
+        content_hash: { type: string }
+    ProvenanceCalibration:
+      type: object
+      required: [id, channel, revision, calibration_state, content_hash]
+      description: |
+        Owner-documented calibration chain. `sensitivity_dbfs_at_94db` is the RMS
+        dBFS reading the documented chain produces for 94 dB SPL at the reference
+        frequency; agents derive their absolute scale from it. No accuracy or
+        uncertainty value is implied.
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        channel: { $ref: '#/components/schemas/Channel' }
+        revision: { type: integer }
+        calibration_state: { type: string, enum: [estimated, calibrated] }
+        reference_method: { type: string }
+        reference_device: { type: [string, 'null'] }
+        reference_level_db: { type: [number, 'null'] }
+        reference_frequency_hz: { type: [number, 'null'] }
+        sensitivity_mv_per_pa: { type: [number, 'null'] }
+        sensitivity_dbfs_at_94db: { type: [number, 'null'] }
+        gain_configuration: { type: [string, 'null'] }
+        application_method: { type: [string, 'null'] }
+        correction_metadata: { type: [object, array, 'null'] }
+        performed_at: { type: [string, 'null'], format: date-time }
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/ProvenanceAttachment' }
+        content_hash: { type: string }
+    ProvenanceAttachment:
+      type: object
+      required: [id, purpose, filename, byte_size, sha256, download_path]
+      properties:
+        id: { $ref: '#/components/schemas/Uuid' }
+        purpose: { type: string, enum: [frequency_response] }
+        filename: { type: string }
+        byte_size: { type: integer }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        download_path: { type: string, description: "Path on the API origin; authenticate with the device token." }
     ConfigurationAcknowledgment:
       type: object
       additionalProperties: false
@@ -1001,12 +1119,15 @@ components:
     Heartbeat:
       type: object
       additionalProperties: false
-      required: [schema_version, agent_version, boot_id, capabilities, microphone_state, clock]
+      required: [schema_version, agent_version, capabilities, microphone_state, clock]
       properties:
         schema_version: { type: integer, const: 1 }
         sent_at: { type: [string, 'null'], format: date-time }
         agent_version: { type: string, maxLength: 64 }
-        boot_id: { $ref: '#/components/schemas/Uuid' }
+        boot_id:
+          type: [string, 'null']
+          format: uuid
+          description: Current acquisition session; null (or omitted) while the agent has none, e.g. before the microphone is connected.
         uptime_seconds: { type: [integer, 'null'], minimum: 0 }
         capabilities:
           type: object

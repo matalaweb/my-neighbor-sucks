@@ -3,6 +3,7 @@
 namespace App\Services\Devices;
 
 use App\Enums\Metric;
+use App\Models\Attachment;
 use App\Models\Device;
 use App\Models\DeviceCalibration;
 use App\Models\DeviceConfiguration;
@@ -259,7 +260,7 @@ class DeviceConfigurationService
         return DB::transaction(function () use ($device, $settings, $user, $notes, $rollbackOf): DeviceConfiguration {
             $device = Device::query()->whereKey($device->id)->lockForUpdate()->first();
             $revision = ((int) $device->configurations()->max('revision')) + 1;
-            $document = $this->buildDocument($device, $settings, $revision);
+            $document = $this->storedForm($this->buildDocument($device, $settings, $revision));
             $result = $this->validate($device, $document);
 
             if ($result['errors'] !== []) {
@@ -291,6 +292,25 @@ class DeviceConfigurationService
 
             return $configuration;
         });
+    }
+
+    private static function decimal(mixed $value): ?float
+    {
+        return $value === null ? null : (float) $value;
+    }
+
+    /**
+     * The document exactly as it is stored and served: a JSON round trip, as the JSON column does.
+     *
+     * Hashing this form (not the in-memory build, where e.g. delta_db is the float 15.0 but is
+     * stored and served as 15) keeps content_hash reproducible from the served document.
+     *
+     * @param  array<string, mixed>  $document
+     * @return array<string, mixed>
+     */
+    public function storedForm(array $document): array
+    {
+        return json_decode(json_encode($document, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -360,6 +380,11 @@ class DeviceConfigurationService
                 'channel' => $profile->channel,
                 'revision' => $profile->revision,
                 'calibration_state' => $profile->calibration_state->value,
+                'microphone_model' => $profile->microphone_model,
+                'microphone_serial' => $profile->microphone_serial,
+                'audio_interface' => $profile->audio_interface,
+                'gain_description' => $profile->gain_description,
+                'calibration_application_method' => $profile->calibration_application_method,
                 'supported_metrics' => $profile->supported_metrics,
                 'sample_rate_hz' => $profile->sample_rate_hz,
                 'gain_db' => $profile->gain_db === null ? null : (float) $profile->gain_db,
@@ -373,11 +398,32 @@ class DeviceConfigurationService
                 'effective_at' => Rfc3339::format($deployment->effective_at),
                 'content_hash' => $deployment->content_hash,
             ])->values()->all(),
-            'calibrations' => DeviceCalibration::query()->where('device_id', $device->id)->whereIn('uuid', $calibrationIds)->get()->map(fn (DeviceCalibration $calibration): array => [
+            'calibrations' => DeviceCalibration::query()->where('device_id', $device->id)->whereIn('uuid', $calibrationIds)->with('attachments')->get()->map(fn (DeviceCalibration $calibration): array => [
                 'id' => $calibration->uuid,
                 'channel' => $calibration->channel,
                 'revision' => $calibration->revision,
                 'calibration_state' => $calibration->calibration_state->value,
+                'reference_method' => $calibration->reference_method,
+                'reference_device' => $calibration->reference_device,
+                'reference_level_db' => self::decimal($calibration->reference_level_db),
+                'reference_frequency_hz' => self::decimal($calibration->reference_frequency_hz),
+                'sensitivity_mv_per_pa' => self::decimal($calibration->sensitivity_mv_per_pa),
+                'sensitivity_dbfs_at_94db' => self::decimal($calibration->sensitivity_dbfs_at_94db),
+                'gain_configuration' => $calibration->gain_configuration,
+                'application_method' => $calibration->application_method,
+                'correction_metadata' => $calibration->correction_metadata,
+                'performed_at' => $calibration->performed_at === null ? null : Rfc3339::format($calibration->performed_at),
+                'attachments' => $calibration->attachments
+                    ->where('purpose', DeviceCalibration::DEVICE_ATTACHMENT_PURPOSE)
+                    ->sortBy('id')
+                    ->map(fn (Attachment $attachment): array => [
+                        'id' => $attachment->uuid,
+                        'purpose' => $attachment->purpose,
+                        'filename' => $attachment->original_filename,
+                        'byte_size' => (int) $attachment->byte_size,
+                        'sha256' => $attachment->sha256,
+                        'download_path' => '/api/v1/device/calibrations/'.$calibration->uuid.'/attachments/'.$attachment->uuid,
+                    ])->values()->all(),
                 'content_hash' => $calibration->content_hash,
             ])->values()->all(),
         ];

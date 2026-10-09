@@ -17,8 +17,9 @@ class Attachment extends Model
 
     public const UPDATED_AT = null;
 
+    /** The UUID is chosen before storage so the object key can include it (see AttachmentStore). */
     protected $fillable = [
-        'account_id', 'attachable_type', 'attachable_id', 'purpose', 'disk', 'object_key',
+        'uuid', 'account_id', 'attachable_type', 'attachable_id', 'purpose', 'disk', 'object_key',
         'original_filename', 'mime_type', 'byte_size', 'sha256', 'uploaded_by',
     ];
 

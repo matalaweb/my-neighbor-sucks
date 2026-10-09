@@ -46,7 +46,7 @@ class RecordHeartbeat
             'schema_version' => ['required', 'integer', 'in:'.config('noise.device_api.schema_version')],
             'sent_at' => ['nullable', 'string'],
             'agent_version' => ['required', 'string', 'max:64'],
-            'boot_id' => ['required', 'uuid'],
+            'boot_id' => ['nullable', 'uuid'],
             'uptime_seconds' => ['nullable', 'integer', 'min:0'],
             'capabilities' => ['required', 'array'],
             'capabilities.channels' => ['required', 'array', 'list'],
@@ -91,7 +91,7 @@ class RecordHeartbeat
                 'account_id' => $device->account_id,
                 'device_id' => $device->id,
                 'agent_version' => $payload['agent_version'],
-                'boot_id' => strtolower($payload['boot_id']),
+                'boot_id' => isset($payload['boot_id']) ? strtolower($payload['boot_id']) : null,
                 'uptime_seconds' => $payload['uptime_seconds'] ?? null,
                 'capabilities' => $payload['capabilities'],
                 'microphone_state' => MicrophoneState::from($payload['microphone_state']),
@@ -116,7 +116,8 @@ class RecordHeartbeat
                 'last_contact_at' => $receivedAt,
                 'capabilities' => json_encode($payload['capabilities']),
                 'software_version' => $payload['agent_version'],
-                'current_boot_id' => strtolower($payload['boot_id']),
+                // Null while the agent has no acquisition session (e.g. microphone not yet connected).
+                'current_boot_id' => isset($payload['boot_id']) ? strtolower($payload['boot_id']) : null,
             ]);
         });
 

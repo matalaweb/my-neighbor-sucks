@@ -3,6 +3,8 @@
 use App\Models\DeviceConfigAcknowledgment;
 use App\Models\DeviceHeartbeat;
 use App\Services\Devices\DeviceConfigurationService;
+use App\Services\Devices\ProvenanceRecords;
+use App\Support\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\DeviceFixture;
@@ -116,4 +118,57 @@ it('validates published configuration against reported capabilities', function (
     expect(fn () => $this->configurations->publish($this->fixture->device->fresh(), $settings, $this->fixture->owner))
         ->toThrow(ValidationException::class);
     expect($this->fixture->device->configurations()->count())->toBe(1);
+});
+
+it('serves a configuration whose sha256 is reproducible from the served document', function (): void {
+    $settings = $this->configurations->settingsFromDocument($this->fixture->configuration->document);
+    $settings['relative_enabled'] = true;
+    $settings['relative_delta_db'] = 15;
+    $settings['absolute_enabled'] = true;
+    $settings['absolute_level_db'] = 85;
+    $this->configurations->publish($this->fixture->device, $settings, $this->fixture->owner);
+
+    $served = json_decode($this->deviceGet($this->fixture, 'configuration')->assertOk()->getContent(), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($served['configuration']['detection']['baseline_relative']['delta_db'])->toBe(15)
+        ->and(CanonicalJson::hash($served['configuration']))->toBe($served['sha256']);
+});
+
+it('exposes the calibration chain and microphone identity in provenance', function (): void {
+    $calibration = app(ProvenanceRecords::class)->createCalibration($this->fixture->device, [
+        'channel' => 'mic-1',
+        'calibration_state' => 'calibrated',
+        'reference_method' => '94 dB / 1 kHz acoustic calibrator',
+        'reference_level_db' => 94,
+        'reference_frequency_hz' => 1000,
+        'sensitivity_dbfs_at_94db' => -25.32,
+        'gain_configuration' => 'UMIK-1 18 dB',
+    ], $this->fixture->owner);
+    $settings = $this->configurations->settingsFromDocument($this->fixture->configuration->document);
+    $settings['channels'][0]['calibration_id'] = $calibration->uuid;
+    $this->configurations->publish($this->fixture->device, $settings, $this->fixture->owner);
+
+    $provenance = $this->deviceGet($this->fixture, 'configuration')->assertOk()->json('provenance');
+
+    expect($provenance['measurement_profiles'][0])->toMatchArray(['microphone_model' => 'Dayton UMM-6', 'microphone_serial' => 'SN-123'])
+        ->and($provenance['calibrations'][0])->toMatchArray([
+            'id' => $calibration->uuid,
+            'reference_level_db' => 94.0,
+            'reference_frequency_hz' => 1000.0,
+            'sensitivity_dbfs_at_94db' => -25.32,
+            'gain_configuration' => 'UMIK-1 18 dB',
+            'attachments' => [],
+        ]);
+});
+
+it('accepts a heartbeat without an acquisition session', function (): void {
+    $payload = heartbeat(['microphone_state' => 'disconnected']);
+    unset($payload['boot_id']);
+
+    $this->devicePost($this->fixture, 'heartbeat', $payload)->assertOk();
+    $this->devicePost($this->fixture, 'heartbeat', heartbeat(['boot_id' => null]))->assertOk();
+
+    expect(DeviceHeartbeat::query()->count())->toBe(2)
+        ->and(DeviceHeartbeat::query()->latest('id')->first()->boot_id)->toBeNull()
+        ->and($this->fixture->device->fresh()->current_boot_id)->toBeNull();
 });
