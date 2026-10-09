@@ -25,6 +25,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -51,6 +52,12 @@ class DeviceResource extends Resource
                     ->label('Property')
                     ->relationship('property', 'name', fn ($query) => $query->where('account_id', Filament::getTenant()->getKey()))
                     ->required(),
+                TextInput::make('public_title')
+                    ->label('Public title')
+                    ->maxLength(120)
+                    ->placeholder('Noise monitor')
+                    ->helperText('Shown instead of the device name on the public dashboard, if you share one.')
+                    ->visibleOn('edit'),
             ])->columns(2),
             Section::make('Backfill import window')
                 ->description('Readings older than '.config('noise.device_api.backfill_days').' days are rejected unless an owner enables an import window here.')
@@ -83,6 +90,15 @@ class DeviceResource extends Resource
                     ->label('Config')
                     ->state(fn (Device $record): string => 'desired r'.($record->desired_config_revision ?? '—').' / applied r'.($record->applied_config_revision ?? '—')),
                 TextColumn::make('software_version')->label('Agent')->toggleable(),
+                IconColumn::make('shared')
+                    ->label('Public')
+                    ->state(fn (Device $record): bool => $record->isPubliclyShared())
+                    ->boolean()
+                    ->trueIcon(Heroicon::OutlinedGlobeAlt)
+                    ->falseIcon(Heroicon::OutlinedMinus)
+                    ->trueColor('info')
+                    ->falseColor('gray')
+                    ->toggleable(),
             ])
             ->filters([
                 SelectFilter::make('status')->options(DeviceStatus::class)->default(DeviceStatus::Active->value),

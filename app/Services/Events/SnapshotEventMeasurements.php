@@ -145,7 +145,7 @@ class SnapshotEventMeasurements
 
         $rows = DB::table('measurements as m')
             ->join('measurement_streams as s', 's.id', '=', 'm.stream_id')
-            ->join('device_deployments as d', 'd.id', '=', 's.device_deployment_id')
+            ->leftJoin('device_deployments as d', 'd.id', '=', 's.device_deployment_id')
             ->join('measurement_profiles as p', 'p.id', '=', 's.measurement_profile_id')
             ->leftJoin('device_calibrations as c', 'c.id', '=', 's.device_calibration_id')
             ->join('measurement_batches as b', 'b.id', '=', 'm.batch_id')
@@ -180,7 +180,7 @@ class SnapshotEventMeasurements
                 'profile_id' => $row->profile_id,
                 'calibration_id' => $row->calibration_id,
                 'calibration_state' => $row->calibration_state,
-                'configuration_revision' => (int) $row->configuration_revision,
+                'configuration_revision' => $row->configuration_revision === null ? null : (int) $row->configuration_revision,
                 'laeq_db' => $this->float($row->laeq_db),
                 'lafmax_db' => $this->float($row->lafmax_db),
                 'lceq_db' => $this->float($row->lceq_db),

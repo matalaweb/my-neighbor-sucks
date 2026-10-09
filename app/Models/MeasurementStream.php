@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * device + channel + deployment + profile + calibration identity. Series from
- * different streams are never averaged together.
+ * device + channel + deployment (null when no placement was in effect) +
+ * profile + calibration identity. Series from different streams are never
+ * averaged together.
  */
 class MeasurementStream extends Model
 {
@@ -50,14 +51,22 @@ class MeasurementStream extends Model
         return $this->belongsTo(DeviceCalibration::class, 'device_calibration_id');
     }
 
-    public static function keyFor(int $deviceId, string $channel, int $deploymentId, int $profileId, ?int $calibrationId): string
+    /**
+     * A null deployment (no placement in effect at capture time) is its own identity.
+     */
+    public static function keyFor(int $deviceId, string $channel, ?int $deploymentId, int $profileId, ?int $calibrationId): string
     {
-        return hash('sha256', implode('|', [$deviceId, $channel, $deploymentId, $profileId, $calibrationId ?? 'none']));
+        return hash('sha256', implode('|', [$deviceId, $channel, $deploymentId ?? 'none', $profileId, $calibrationId ?? 'none']));
+    }
+
+    public function placementLabel(): string
+    {
+        return $this->device_deployment_id === null ? 'placement not recorded' : 'placement r'.$this->deployment?->revision;
     }
 
     public function label(): string
     {
-        return $this->channel.' · placement r'.$this->deployment?->revision.' · profile r'.$this->profile?->revision
+        return $this->channel.' · '.$this->placementLabel().' · profile r'.$this->profile?->revision
             .' · '.$this->calibration_state->getLabel();
     }
 }

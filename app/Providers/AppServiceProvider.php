@@ -8,10 +8,12 @@ use App\Services\Storage\EvidenceStorage;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +34,9 @@ class AppServiceProvider extends ServiceProvider
         Auth::viaRequest('device-token', $this->app->make(DeviceTokenResolver::class));
 
         $this->configureRateLimiting();
+
+        // Re-apply route throttling to Livewire updates (polls on public share links).
+        Livewire::addPersistentMiddleware([ThrottleRequests::class]);
     }
 
     private function configureRateLimiting(): void
@@ -51,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('device-control', fn (Request $request): Limit => Limit::perMinute((int) config('noise.device_api.control_rate_per_minute'))->by('c:'.$deviceKey($request)));
 
         RateLimiter::for('device-recordings', fn (Request $request): Limit => Limit::perMinute((int) config('noise.device_api.recording_rate_per_minute'))->by('r:'.$deviceKey($request)));
+
+        RateLimiter::for('public-share', fn (Request $request): Limit => Limit::perMinute((int) config('noise.sharing.requests_per_minute'))->by('share:'.$request->ip()));
 
         RateLimiter::for('device-events', fn (Request $request): Limit => Limit::perMinute(120)->by('e:'.$deviceKey($request)));
     }

@@ -174,14 +174,14 @@
             <x-filament::section>
                 <x-slot name="heading">Provenance</x-slot>
                 <dl class="grid grid-cols-3 gap-x-3 gap-y-1 text-sm">
-                    <dt class="text-gray-500">Placement</dt><dd class="col-span-2">{{ $stream?->deployment?->label() }}<div class="text-xs text-gray-500">{{ $stream?->deployment?->placement_description }}</div></dd>
+                    <dt class="text-gray-500">Placement</dt><dd class="col-span-2">@if ($stream?->deployment){{ $stream->deployment->label() }}<div class="text-xs text-gray-500">{{ $stream->deployment->placement_description }}</div>@else<span class="text-gray-500">Placement not recorded</span><div class="text-xs text-gray-500">No placement was in effect when this event started.</div>@endif</dd>
                     <dt class="text-gray-500">Profile</dt><dd class="col-span-2">{{ $stream?->profile?->label() }}<div class="text-xs text-gray-500">{{ $stream?->profile?->sample_rate_hz }} Hz · gain {{ $stream?->profile?->gain_db ?? '—' }} dB · weighting {{ $stream?->profile?->weighting_implementation_version }} · agent {{ $stream?->profile?->agent_processing_version }}</div></dd>
                     <dt class="text-gray-500">Calibration</dt><dd class="col-span-2">
                         <x-filament::badge size="sm" :color="$stream?->calibration_state->getColor()">{{ $stream?->calibration_state->getLabel() }}</x-filament::badge>
                         <div class="text-xs text-gray-500">{{ $stream?->calibration ? $stream->calibration->label() : 'No calibration record (dBFS only)' }}</div>
                         <div class="text-xs text-gray-500">{{ $stream?->calibration_state->getDescription() }}</div>
                     </dd>
-                    <dt class="text-gray-500">Configuration</dt><dd class="col-span-2">revision r{{ $event->configuration_revision }}</dd>
+                    <dt class="text-gray-500">Configuration</dt><dd class="col-span-2">{{ $event->configuration_revision === null ? 'Local defaults (no configuration published yet)' : 'revision r'.$event->configuration_revision }}</dd>
                     <dt class="text-gray-500">Agent revision</dt><dd class="col-span-2">r{{ $event->current_revision }} of {{ $event->revisions->count() }} received</dd>
                 </dl>
             </x-filament::section>

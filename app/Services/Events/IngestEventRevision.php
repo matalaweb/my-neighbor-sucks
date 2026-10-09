@@ -66,11 +66,11 @@ class IngestEventRevision
 
     private function resolveStream(Device $device, EventRevisionData $data): int
     {
-        $this->provenance->load($device, [$data->deploymentUuid], [$data->profileUuid], array_filter([$data->calibrationUuid]), [$data->configurationRevision]);
+        $this->provenance->load($device, [$data->profileUuid], array_values(array_filter([$data->calibrationUuid])), [$data->configurationRevision]);
 
         $errors = [];
         $unknown = false;
-        $tuple = $this->provenance->check('', $data->channel, $data->startedAt, $data->deploymentUuid, $data->profileUuid, $data->calibrationUuid, $data->configurationRevision, $errors, $unknown);
+        $tuple = $this->provenance->check('', $data->channel, $data->startedAt, $data->profileUuid, $data->calibrationUuid, $data->configurationRevision, $errors, $unknown);
 
         if ($tuple !== null) {
             [, $profile] = $tuple;
@@ -93,14 +93,15 @@ class IngestEventRevision
 
             throw new DeviceApiException(
                 $unknown ? ErrorCode::UnknownProvenance : ErrorCode::ValidationFailed,
-                $unknown ? 'Event provenance references are not provisioned for this device; refresh configuration.' : 'Event provenance is inconsistent.',
+                $unknown ? 'Event provenance references are not registered for this device; register the measurement chain (POST /provenance) and resubmit.' : 'Event provenance is inconsistent.',
                 ['errors' => $errors],
             );
         }
 
         [$deployment, $profile, $calibration] = $tuple;
 
-        return $this->provenance->streamIds($device, [0 => [$data->channel, $deployment->id, $profile->id, $calibration?->id, $profile->calibration_state]])[0];
+        // The placement in effect when the event started (null when none was recorded yet).
+        return $this->provenance->streamIds($device, [0 => [$data->channel, $deployment?->id, $profile->id, $calibration?->id, $profile->calibration_state]])[0];
     }
 
     /**

@@ -21,6 +21,7 @@ hidden.
 | Event revision | event + `revision` | `noise_event_revisions (noise_event_id, revision)` |
 | Recording | device + `recording_id`; event + `segment_number` | `event_recordings` uniques |
 | Configuration | device + `revision` | `device_configurations (device_id, revision)` |
+| Device-registered profile / calibration | device-generated `id` (+ content hash) | `measurement_profiles.uuid`, `device_calibrations.uuid` |
 
 ### Canonical hash (`App\Support\CanonicalJson`)
 
@@ -32,7 +33,11 @@ order, has no whitespace, and encodes floats in shortest round-trip form with a
 `.0` fraction preserved. The hash is lowercase hex SHA-256 of the UTF-8 text.
 
 * Row hash: canonical record (`MeasurementBatchParser::parseRecord`), stored
-  as `measurements.row_hash` (binary 32).
+  as `measurements.row_hash` (binary 32). Since 2026-10-09 the server ignores
+  `deployment_id` (placements are resolved from the capture time); it is part
+  of the row and event revision hash only when an agent still sends it, so
+  retries of rows stored earlier keep matching. `configuration_revision` may
+  be null (local defaults).
 * Batch hash (`MeasurementBatchData::payloadHash`): `{schema_version,
   batch_id, records}` with records sorted by (channel, boot_id, sequence).
   `sent_at` is excluded because it is transport metadata.

@@ -20,8 +20,10 @@ class Device extends Model
     protected $fillable = [
         'account_id', 'property_id', 'name', 'status', 'capabilities', 'software_version',
         'reporting_interval_seconds', 'heartbeat_interval_seconds',
-        'import_window_starts_at', 'import_window_expires_at', 'archived_at',
+        'import_window_starts_at', 'import_window_expires_at', 'archived_at', 'public_title',
     ];
+
+    protected $hidden = ['share_token', 'share_token_hash'];
 
     protected function casts(): array
     {
@@ -34,6 +36,8 @@ class Device extends Model
             'import_window_starts_at' => 'immutable_datetime',
             'import_window_expires_at' => 'immutable_datetime',
             'archived_at' => 'immutable_datetime',
+            'share_token' => 'encrypted',
+            'shared_at' => 'immutable_datetime',
         ];
     }
 
@@ -106,6 +110,23 @@ class Device extends Model
     public function isArchived(): bool
     {
         return $this->status === DeviceStatus::Archived;
+    }
+
+    public function isPubliclyShared(): bool
+    {
+        return $this->share_token_hash !== null && ! $this->isArchived();
+    }
+
+    public function publicShareUrl(): ?string
+    {
+        return $this->isPubliclyShared() && $this->share_token !== null
+            ? route('share.show', $this->share_token)
+            : null;
+    }
+
+    public function publicTitle(): string
+    {
+        return filled($this->public_title) ? $this->public_title : 'Noise monitor';
     }
 
     public function latestConfiguration(): ?DeviceConfiguration

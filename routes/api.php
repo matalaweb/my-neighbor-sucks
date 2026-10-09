@@ -1,10 +1,10 @@
 <?php
 
-use App\Http\Controllers\DeviceApi\CalibrationAttachmentController;
 use App\Http\Controllers\DeviceApi\ConfigurationController;
 use App\Http\Controllers\DeviceApi\EventController;
 use App\Http\Controllers\DeviceApi\HeartbeatController;
 use App\Http\Controllers\DeviceApi\MeasurementBatchController;
+use App\Http\Controllers\DeviceApi\ProvenanceController;
 use App\Http\Controllers\DeviceApi\RecordingController;
 use App\Models\DeviceCredential;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +21,11 @@ Route::prefix('v1/device')
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_MEASUREMENTS, 'throttle:device-measurements', 'device.payload'])
             ->name('measurements.batches.store');
 
+        // The device registers its own measurement chain; calibration files travel inline (2 MiB limit).
+        Route::post('provenance', [ProvenanceController::class, 'store'])
+            ->middleware(['device.ability:'.DeviceCredential::ABILITY_MEASUREMENTS, 'throttle:device-control', 'device.payload:'.(2 * 1024 * 1024)])
+            ->name('provenance.store');
+
         Route::post('events', [EventController::class, 'store'])
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_EVENTS, 'throttle:device-events', 'device.payload'])
             ->name('events.store');
@@ -35,10 +40,6 @@ Route::prefix('v1/device')
         Route::get('configuration', [ConfigurationController::class, 'show'])
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control'])
             ->name('configuration.show');
-
-        Route::get('calibrations/{calibrationUuid}/attachments/{attachmentUuid}', [CalibrationAttachmentController::class, 'show'])
-            ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control'])
-            ->name('calibrations.attachments.show');
 
         Route::post('configuration/acknowledgments', [ConfigurationController::class, 'acknowledge'])
             ->middleware(['device.ability:'.DeviceCredential::ABILITY_CONFIGURATION, 'throttle:device-control', 'device.payload'])

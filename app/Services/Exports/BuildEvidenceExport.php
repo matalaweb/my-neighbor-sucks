@@ -35,6 +35,9 @@ class BuildEvidenceExport
 {
     public const HASH_STATEMENT = 'SHA-256 values show whether exported bytes match the bytes this server retained. They do not prove capture authenticity, a correct device clock, or a particular noise source. Application audit logs are traceability features, not a tamper-proof chain of custody.';
 
+    /** CSV value for readings taken before any configuration was published (the agent's local defaults). */
+    public const LOCAL_DEFAULTS = 'local-defaults';
+
     public const DISCLAIMER = 'This report was produced by a do-it-yourself home noise monitoring system (Raspberry Pi with a consumer measurement microphone). It is not a certified or regulatory sound level meter, and these readings do not by themselves establish a legal violation, identify a particular vehicle, or identify a particular person.';
 
     public function __construct(
@@ -485,7 +488,7 @@ class BuildEvidenceExport
                 'interface' => $stream->profile?->audio_interface,
                 'sample_rate' => $stream->profile?->sample_rate_hz,
                 'gain' => $stream->profile?->gain_db !== null ? $stream->profile->gain_db.' dB' : ($stream->profile?->gain_description ?? '—'),
-                'placement' => $stream->deployment ? $stream->deployment->label().($stream->deployment->placement_description ? ' — '.$stream->deployment->placement_description : '') : '—',
+                'placement' => $stream->deployment ? $stream->deployment->label().($stream->deployment->placement_description ? ' — '.$stream->deployment->placement_description : '') : 'Placement not recorded',
                 'mounting' => $stream->deployment?->mounting_notes,
                 'calibration_state' => $stream->calibration_state,
                 'calibration' => $stream->calibration ? $stream->calibration->reference_method.($stream->calibration->reference_level_db ? ', reference '.$stream->calibration->reference_level_db.' dB' : '').($stream->calibration->performed_at ? ', performed '.LocalTime::display($stream->calibration->performed_at, $tz, false) : '') : 'No calibration record (uncalibrated: digital dBFS only)',
@@ -663,7 +666,7 @@ class BuildEvidenceExport
                     fwrite($handle, CsvEscaper::line([
                         'PT1S', Rfc3339::format($start), Rfc3339::format($start->addMilliseconds($row['duration_ms'])), LocalTime::display($start, $context->timezone),
                         $item['model']->uuid, $item['device']?->name, $row['channel'], $row['boot_id'], $row['sequence'], $row['deployment_id'], $row['profile_id'],
-                        $row['calibration_id'], $row['calibration_state'], $row['configuration_revision'], $row['laeq_db'], $row['lafmax_db'], $row['lceq_db'],
+                        $row['calibration_id'], $row['calibration_state'], $row['configuration_revision'] ?? self::LOCAL_DEFAULTS, $row['laeq_db'], $row['lafmax_db'], $row['lceq_db'],
                         $row['lcpeak_db'], $row['low_frequency_leq_db'], $row['rms_dbfs'], $row['duration_ms'], null, implode(' ', $row['quality_flags']),
                         json_encode($row['null_reasons']), $row['row_sha256'],
                     ]));
@@ -696,7 +699,7 @@ class BuildEvidenceExport
                             fwrite($handle, CsvEscaper::line([
                                 'PT1M', Rfc3339::format($start), Rfc3339::format($start->addMinute()), LocalTime::display($start, $context->timezone), null,
                                 $stream->device?->name, $stream->channel, null, null, $stream->deployment?->uuid, $stream->profile?->uuid, $stream->calibration?->uuid,
-                                $stream->calibration_state->value, implode(' ', json_decode($row->configuration_revisions ?? '[]', true)),
+                                $stream->calibration_state->value, implode(' ', array_map(fn (?int $revision): string => $revision === null ? self::LOCAL_DEFAULTS : (string) $revision, json_decode($row->configuration_revisions ?? '[]', true))),
                                 $leq($row->laeq_energy_sum, (int) $row->laeq_valid_ms), $row->lafmax_max, $leq($row->lceq_energy_sum, (int) $row->lceq_valid_ms),
                                 $row->lcpeak_max, $leq($row->lf_energy_sum, (int) $row->lf_valid_ms), $leq($row->dbfs_energy_sum, (int) $row->dbfs_valid_ms),
                                 $row->laeq_valid_ms, $row->laeq_excluded_ms, $row->quality_counts, null, null,
@@ -716,7 +719,7 @@ class BuildEvidenceExport
                         fwrite($handle, CsvEscaper::line([
                             'PT1S', Rfc3339::format($start), Rfc3339::format($start->addMilliseconds((int) $row->duration_ms)), LocalTime::display($start, $context->timezone), null,
                             $stream->device?->name, $row->channel, $row->boot_id, $row->sequence, $stream->deployment?->uuid, $stream->profile?->uuid, $stream->calibration?->uuid,
-                            $stream->calibration_state->value, $row->configuration_revision, $row->laeq_db, $row->lafmax_db, $row->lceq_db, $row->lcpeak_db,
+                            $stream->calibration_state->value, $row->configuration_revision ?? self::LOCAL_DEFAULTS, $row->laeq_db, $row->lafmax_db, $row->lceq_db, $row->lcpeak_db,
                             $row->low_frequency_leq_db, $row->rms_dbfs, $row->duration_ms, null, implode(' ', QualityFlag::valuesFromMask((int) $row->quality_flags)),
                             $row->null_reasons, bin2hex($row->row_hash),
                         ]));

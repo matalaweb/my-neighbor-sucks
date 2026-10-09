@@ -155,7 +155,8 @@ class MeasurementBatchParser
             }
         }
 
-        $deploymentUuid = $this->uuid($raw['deployment_id'] ?? null, $path.'.deployment_id');
+        // Accepted from older agents but ignored: the server resolves the placement from the capture time.
+        $legacyDeploymentUuid = ($raw['deployment_id'] ?? null) === null ? null : $this->uuid($raw['deployment_id'], $path.'.deployment_id');
         $profileUuid = $this->uuid($raw['profile_id'] ?? null, $path.'.profile_id');
         $calibrationUuid = null;
 
@@ -163,7 +164,8 @@ class MeasurementBatchParser
             $calibrationUuid = $this->uuid($raw['calibration_id'], $path.'.calibration_id');
         }
 
-        $configurationRevision = $this->integer($raw['configuration_revision'] ?? null, $path.'.configuration_revision', 1);
+        // null = the agent ran on local defaults (no server configuration applied).
+        $configurationRevision = ($raw['configuration_revision'] ?? null) === null ? null : $this->integer($raw['configuration_revision'], $path.'.configuration_revision', 1);
 
         $metrics = [];
 
@@ -252,7 +254,6 @@ class MeasurementBatchParser
             'channel' => $channel,
             'captured_at' => Rfc3339::formatMicro($capturedAt),
             'duration_ms' => $durationMs,
-            'deployment_id' => $deploymentUuid,
             'profile_id' => $profileUuid,
             'calibration_id' => $calibrationUuid,
             'configuration_revision' => $configurationRevision,
@@ -262,6 +263,11 @@ class MeasurementBatchParser
             'bands' => $bands,
         ];
 
+        // Kept in the row hash only when sent, so retries from older agents still match stored rows.
+        if ($legacyDeploymentUuid !== null) {
+            $canonical['deployment_id'] = $legacyDeploymentUuid;
+        }
+
         return new MeasurementRecord(
             index: $index,
             bootId: (string) $bootId,
@@ -269,10 +275,9 @@ class MeasurementBatchParser
             channel: (string) $channel,
             capturedAt: $capturedAt,
             durationMs: (int) $durationMs,
-            deploymentUuid: (string) $deploymentUuid,
             profileUuid: (string) $profileUuid,
             calibrationUuid: $calibrationUuid,
-            configurationRevision: (int) $configurationRevision,
+            configurationRevision: $configurationRevision,
             metrics: $metrics,
             nullReasons: $nullReasons,
             qualityFlags: $qualityFlags,

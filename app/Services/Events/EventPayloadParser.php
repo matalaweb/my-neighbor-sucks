@@ -55,10 +55,12 @@ class EventPayloadParser
             $this->error('channel', 'Must be 1–32 characters of A–Z, a–z, 0–9, ".", "_", "-".');
         }
 
-        $deploymentId = $this->uuid($payload['deployment_id'] ?? null, 'deployment_id');
+        // Accepted from older agents but ignored: the server resolves the placement from started_at.
+        $legacyDeploymentId = ($payload['deployment_id'] ?? null) === null ? null : $this->uuid($payload['deployment_id'], 'deployment_id');
         $profileId = $this->uuid($payload['profile_id'] ?? null, 'profile_id');
         $calibrationId = ($payload['calibration_id'] ?? null) === null ? null : $this->uuid($payload['calibration_id'], 'calibration_id');
-        $configurationRevision = $this->integer($payload['configuration_revision'] ?? null, 'configuration_revision', 1);
+        // null = the agent ran on local defaults (no server configuration applied).
+        $configurationRevision = ($payload['configuration_revision'] ?? null) === null ? null : $this->integer($payload['configuration_revision'], 'configuration_revision', 1);
 
         $state = DetectionState::tryFrom((string) ($payload['detection_state'] ?? ''));
 
@@ -167,7 +169,6 @@ class EventPayloadParser
             'event_id' => $eventId,
             'revision' => $revision,
             'channel' => $channel,
-            'deployment_id' => $deploymentId,
             'profile_id' => $profileId,
             'calibration_id' => $calibrationId,
             'configuration_revision' => $configurationRevision,
@@ -193,11 +194,15 @@ class EventPayloadParser
             'quality_flags' => $qualityFlags,
         ];
 
+        // Kept in the revision hash only when sent, so retries from older agents still match stored revisions.
+        if ($legacyDeploymentId !== null) {
+            $canonical['deployment_id'] = $legacyDeploymentId;
+        }
+
         return new EventRevisionData(
             eventUuid: $eventId,
             revision: $revision,
             channel: $channel,
-            deploymentUuid: $deploymentId,
             profileUuid: $profileId,
             calibrationUuid: $calibrationId,
             configurationRevision: $configurationRevision,

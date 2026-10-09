@@ -8,9 +8,8 @@ use App\Models\Device;
 use App\Models\NoiseEvent;
 use App\Models\Property;
 use App\Services\Measurements\DashboardSummary;
-use App\Services\Measurements\MeasurementSeries;
+use App\Services\Measurements\DeviceChart;
 use App\Support\LocalTime;
-use App\Support\Rfc3339;
 use BackedEnum;
 use Carbon\CarbonImmutable;
 use Filament\Facades\Filament;
@@ -147,30 +146,7 @@ class PropertyDashboard extends Dashboard
         $summaries = app(DashboardSummary::class);
         $channel = $device->streams()->value('channel') ?? 'mic-1';
 
-        $series = app(MeasurementSeries::class)->forDevice($device, $channel, $from, $to, $metric);
-
-        $events = NoiseEvent::query()
-            ->where('account_id', $device->account_id)
-            ->where('device_id', $device->id)
-            ->where('started_at', '<', Rfc3339::toDatabase($to))
-            ->where(fn ($query) => $query->whereNull('ended_at')->orWhere('ended_at', '>', Rfc3339::toDatabase($from)))
-            ->orderBy('started_at')
-            ->limit(500)
-            ->get(['id', 'uuid', 'started_at', 'ended_at', 'review_status']);
-
-        $chart = [
-            'timezone' => $property->timezone,
-            'metric' => $series['metric'],
-            'resolution' => $series['resolution'],
-            'series' => $series['series'],
-            'showMaxima' => $this->showMaxima && $metric->isEnergy(),
-            'range' => ['from' => $from->getTimestampMs(), 'to' => $to->getTimestampMs()],
-            'events' => $events->map(fn (NoiseEvent $event): array => [
-                'start' => $event->started_at->getTimestampMs(),
-                'end' => $event->ended_at?->getTimestampMs(),
-                'confirmed' => $event->review_status->value === 'confirmed_disturbance',
-            ])->all(),
-        ];
+        ['series' => $series, 'chart' => $chart] = app(DeviceChart::class)->build($device, $channel, $metric, $from, $to, $this->showMaxima);
 
         return [
             'property' => $property,

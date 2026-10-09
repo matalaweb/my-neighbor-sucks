@@ -6,14 +6,17 @@ use App\Http\DeviceApi\DeviceApiException;
 use App\Http\DeviceApi\DeviceApiResponse;
 use App\Http\DeviceApi\ErrorCode;
 use App\Services\Devices\AcknowledgeConfiguration;
-use App\Services\Devices\DeviceConfigurationService;
 use App\Support\Rfc3339;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ConfigurationController extends DeviceApiController
 {
-    public function show(Request $request, DeviceConfigurationService $configurations): JsonResponse
+    /**
+     * The configuration carries operational settings only; the device's measurement
+     * chain is registered by the device itself (POST /provenance).
+     */
+    public function show(Request $request): JsonResponse
     {
         $device = $this->device($request);
         $configuration = $device->latestConfiguration();
@@ -28,7 +31,6 @@ class ConfigurationController extends DeviceApiController
             'issued_at' => Rfc3339::format($configuration->issued_at),
             'applied_revision' => $device->applied_config_revision,
             'configuration' => $configuration->document,
-            'provenance' => $configurations->provenance($device, $configuration->document),
         ], 200, ['ETag' => '"'.$configuration->content_hash.'"']);
     }
 

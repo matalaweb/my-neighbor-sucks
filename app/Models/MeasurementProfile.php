@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CalibrationState;
 use App\Enums\Metric;
+use App\Enums\ProvenanceSource;
 use App\Models\Concerns\BelongsToAccount;
 use App\Models\Concerns\HasPublicUuid;
 use App\Models\Concerns\IsImmutable;
@@ -19,18 +20,20 @@ class MeasurementProfile extends Model
 
     public const UPDATED_AT = null;
 
+    /** Device-registered records keep the UUID the device generated (see ProvenanceRecords). */
     protected $fillable = [
-        'account_id', 'device_id', 'channel', 'revision', 'name', 'microphone_model', 'microphone_serial',
+        'uuid', 'account_id', 'device_id', 'channel', 'revision', 'name', 'microphone_model', 'microphone_serial',
         'audio_interface', 'sample_rate_hz', 'gain_db', 'gain_description', 'weighting_implementation_version',
         'filter_implementation_version', 'calibration_state', 'calibration_application_method',
         'supported_metrics', 'low_frequency_lower_hz', 'low_frequency_upper_hz', 'band_definitions',
-        'agent_processing_version', 'content_hash', 'created_by',
+        'agent_processing_version', 'content_hash', 'source', 'created_by',
     ];
 
     protected function casts(): array
     {
         return [
             'calibration_state' => CalibrationState::class,
+            'source' => ProvenanceSource::class,
             'supported_metrics' => 'array',
             'band_definitions' => 'array',
             'gain_db' => 'decimal:2',

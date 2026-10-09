@@ -15,10 +15,10 @@ docker compose exec app php artisan noise:demo:provision --with-uncalibrated   #
 | - | - | - |
 | `--account=` | `Demo (synthetic)` | Account to create or reuse. A name without "demo" gets " — demo (synthetic)" appended. |
 | `--email=` | `demo-owner@example.test` | Owner login, created if missing. The password is printed once. |
-| `--with-uncalibrated` | off | Also provision an uncalibrated `mic-2` channel that reports only dBFS |
+| `--with-uncalibrated` | off | Also configure an uncalibrated `mic-2` channel that reports only dBFS (the simulator registers its profile) |
 | `--force` | off | Allow running in production. Don't, except in a throwaway environment. |
 
-Each run creates a **new** device ("Simulated Pi XXXX") with a placement, a calibrated measurement profile, a calibration record and a published configuration. It prints a device token **once**.
+Each run creates a **new** device ("Simulated Pi XXXX") with a placement and a published configuration. Like a real Pi, the simulated device registers its own measurement profile and calibration when the simulator first runs. It prints a device token **once**.
 
 ## 2. Run scenarios
 
@@ -37,9 +37,10 @@ docker compose exec app php artisan noise:simulate --token=nmd_... --scenario=da
 | `--hours=` | `24` | Hours to replay for `day` (maximum 24) |
 | `--seed=` | `42` | Random seed |
 | `--speed=` | `1` | Real-time divisor for simulated delays (`0` = don't wait) |
+| `--with-uncalibrated` | off | Also register an uncalibrated `mic-2` profile and use it in the `uncalibrated` scenario (implied when the configuration has a `mic-2` channel) |
 | `--no-verify-wait` | off | Don't poll recordings until they are verified |
 
-The simulator first fetches `GET /configuration` to learn its provenance IDs and sends a heartbeat. It then lays the scenarios out back-to-back on one timeline ending now and prints a summary of requests, inserted and duplicate readings, rejections by error code, and per-scenario checks. It follows the agent retry policy: exponential backoff with jitter on network errors and 5xx, honouring `Retry-After` on 429, and always reusing the same identities.
+The simulator first fetches `GET /configuration` (on `404` it runs on local defaults and sends `configuration_revision: null`), registers its synthetic measurement chain with `POST /provenance` (IDs are derived from the token and the record content, so repeated runs report `existing`), and sends a heartbeat. It then lays the scenarios out back-to-back on one timeline ending now and prints a summary of requests, inserted and duplicate readings, rejections by error code, and per-scenario checks. It follows the agent retry policy: exponential backoff with jitter on network errors and 5xx, honouring `Retry-After` on 429, and always reusing the same identities.
 
 | Scenario | What it demonstrates |
 | - | - |

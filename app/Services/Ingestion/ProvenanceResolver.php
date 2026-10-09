@@ -17,12 +17,14 @@ use Illuminate\Support\Facades\DB;
 /**
  * Validates that every provenance reference belongs to the authenticated
  * device and is consistent with the record (spec §4, §5, §8), and resolves
- * stream identities. Profiles, calibrations, and deployments must already be
- * provisioned by an owner.
+ * stream identities. Profiles and calibrations are registered by the device
+ * (owner-created legacy records stay valid). The placement is never sent by
+ * the device: the server assigns the deployment in effect at capture time
+ * (greatest effective_at <= captured_at), or none.
  */
 class ProvenanceResolver
 {
-    /** @var array<string, DeviceDeployment> */
+    /** @var list<DeviceDeployment> ordered by effective_at, revision */
     private array $deployments = [];
 
     /** @var array<string, MeasurementProfile> */
@@ -37,16 +39,17 @@ class ProvenanceResolver
     /**
      * Load references for the given UUIDs/revisions (one query per kind).
      *
-     * @param  list<string>  $deploymentUuids
      * @param  list<string>  $profileUuids
      * @param  list<string>  $calibrationUuids
-     * @param  list<int>  $revisions
+     * @param  list<int|null>  $revisions  null = local defaults (no revision to check)
      */
-    public function load(Device $device, array $deploymentUuids, array $profileUuids, array $calibrationUuids, array $revisions): self
+    public function load(Device $device, array $profileUuids, array $calibrationUuids, array $revisions): self
     {
-        $this->deployments = $deploymentUuids === [] ? [] : DeviceDeployment::query()
-            ->where('device_id', $device->id)->whereIn('uuid', array_unique($deploymentUuids))
-            ->get()->keyBy('uuid')->all();
+        $this->deployments = DeviceDeployment::query()
+            ->where('device_id', $device->id)
+            ->orderBy('effective_at')->orderBy('revision')
+            ->get(['id', 'uuid', 'device_id', 'revision', 'effective_at'])
+            ->all();
 
         $this->profiles = $profileUuids === [] ? [] : MeasurementProfile::query()
             ->where('device_id', $device->id)->whereIn('uuid', array_unique($profileUuids))
@@ -56,12 +59,33 @@ class ProvenanceResolver
             ->where('device_id', $device->id)->whereIn('uuid', array_unique($calibrationUuids))
             ->get()->keyBy('uuid')->all();
 
+        $revisions = array_values(array_unique(array_filter($revisions, fn (?int $revision): bool => $revision !== null)));
+
         $this->configurationRevisions = $revisions === [] ? [] : array_fill_keys(
-            DB::table('device_configurations')->where('device_id', $device->id)->whereIn('revision', array_unique($revisions))->pluck('revision')->map(fn ($revision): int => (int) $revision)->all(),
+            DB::table('device_configurations')->where('device_id', $device->id)->whereIn('revision', $revisions)->pluck('revision')->map(fn ($revision): int => (int) $revision)->all(),
             true,
         );
 
         return $this;
+    }
+
+    /**
+     * The placement in effect at a capture time: the greatest effective_at <= $capturedAt
+     * (latest revision on ties), or null when none was in effect yet.
+     */
+    public function deploymentAt(CarbonImmutable $capturedAt): ?DeviceDeployment
+    {
+        $current = null;
+
+        foreach ($this->deployments as $deployment) {
+            if ($deployment->effective_at->greaterThan($capturedAt)) {
+                break;
+            }
+
+            $current = $deployment;
+        }
+
+        return $current;
     }
 
     /**
@@ -72,10 +96,9 @@ class ProvenanceResolver
     {
         $this->load(
             $device,
-            array_map(fn (MeasurementRecord $record): string => $record->deploymentUuid, $records),
             array_map(fn (MeasurementRecord $record): string => $record->profileUuid, $records),
             array_values(array_filter(array_map(fn (MeasurementRecord $record): ?string => $record->calibrationUuid, $records))),
-            array_map(fn (MeasurementRecord $record): int => $record->configurationRevision, $records),
+            array_map(fn (MeasurementRecord $record): ?int => $record->configurationRevision, $records),
         );
 
         $errors = [];
@@ -88,7 +111,6 @@ class ProvenanceResolver
                 $path,
                 $record->channel,
                 $record->capturedAt,
-                $record->deploymentUuid,
                 $record->profileUuid,
                 $record->calibrationUuid,
                 $record->configurationRevision,
@@ -125,14 +147,14 @@ class ProvenanceResolver
                 }
             }
 
-            $streamTuples[$record->index] = [$record->channel, $deployment->id, $profile->id, $calibration?->id, $profile->calibration_state];
+            $streamTuples[$record->index] = [$record->channel, $deployment?->id, $profile->id, $calibration?->id, $profile->calibration_state];
         }
 
         if ($errors !== []) {
             throw new DeviceApiException(
                 $unknown ? ErrorCode::UnknownProvenance : ErrorCode::ValidationFailed,
                 $unknown
-                    ? 'One or more provenance references are not provisioned for this device; refresh configuration.'
+                    ? 'One or more provenance references are not registered for this device; register the measurement chain (POST /provenance) and resubmit.'
                     : 'One or more records are inconsistent with their provenance; nothing was stored.',
                 ['errors' => $errors],
             );
@@ -143,30 +165,21 @@ class ProvenanceResolver
 
     /**
      * @param  array<string, list<string>>  $errors
-     * @return array{0: DeviceDeployment, 1: MeasurementProfile, 2: DeviceCalibration|null}|null
+     * @return array{0: DeviceDeployment|null, 1: MeasurementProfile, 2: DeviceCalibration|null}|null
      */
     public function check(
         string $path,
         string $channel,
         CarbonImmutable $capturedAt,
-        string $deploymentUuid,
         string $profileUuid,
         ?string $calibrationUuid,
-        int $configurationRevision,
+        ?int $configurationRevision,
         array &$errors,
         bool &$unknown,
     ): ?array {
-        $deployment = $this->deployments[$deploymentUuid] ?? null;
         $profile = $this->profiles[$profileUuid] ?? null;
         $calibration = $calibrationUuid === null ? null : ($this->calibrations[$calibrationUuid] ?? null);
         $before = count($errors);
-
-        if ($deployment === null) {
-            $errors[$path.'.deployment_id'][] = 'Unknown deployment for this device.';
-            $unknown = true;
-        } elseif ($capturedAt->lessThan($deployment->effective_at)) {
-            $errors[$path.'.deployment_id'][] = 'Capture time precedes the deployment effective time.';
-        }
 
         if ($profile === null) {
             $errors[$path.'.profile_id'][] = 'Unknown measurement profile for this device.';
@@ -180,7 +193,7 @@ class ProvenanceResolver
             $unknown = true;
         }
 
-        if (! isset($this->configurationRevisions[$configurationRevision])) {
+        if ($configurationRevision !== null && ! isset($this->configurationRevisions[$configurationRevision])) {
             $errors[$path.'.configuration_revision'][] = 'Unknown configuration revision for this device.';
             $unknown = true;
         }
@@ -207,15 +220,15 @@ class ProvenanceResolver
             }
         }
 
-        if (count($errors) > $before || $deployment === null || $profile === null) {
+        if (count($errors) > $before || $profile === null) {
             return null;
         }
 
-        return [$deployment, $profile, $calibration];
+        return [$this->deploymentAt($capturedAt), $profile, $calibration];
     }
 
     /**
-     * @param  array<int, array{0: string, 1: int, 2: int, 3: int|null, 4: CalibrationState}>  $tuples
+     * @param  array<int, array{0: string, 1: int|null, 2: int, 3: int|null, 4: CalibrationState}>  $tuples
      * @return array<int, int>
      */
     public function streamIds(Device $device, array $tuples): array

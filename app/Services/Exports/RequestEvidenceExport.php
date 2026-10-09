@@ -236,7 +236,7 @@ class RequestEvidenceExport
             'device_ids' => $deviceIds,
             'stream_ids' => array_values(array_map('intval', $streamIds)),
             'provenance' => [
-                'deployment_ids' => $streams->pluck('device_deployment_id')->unique()->values()->all(),
+                'deployment_ids' => $streams->pluck('device_deployment_id')->filter()->unique()->values()->all(),
                 'profile_ids' => $streams->pluck('measurement_profile_id')->unique()->values()->all(),
                 'calibration_ids' => $streams->pluck('device_calibration_id')->filter()->unique()->values()->all(),
                 'configuration_ids' => $configurationIds,

@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\CalibrationState;
 use App\Enums\MembershipRole;
 use App\Models\Account;
 use App\Models\Device;
@@ -24,9 +23,9 @@ use Illuminate\Support\Str;
 #[Signature('noise:demo:provision
     {--account=Demo (synthetic) : Name of the demo account to create or reuse}
     {--email=demo-owner@example.test : Owner email for the demo account}
-    {--with-uncalibrated : Also provision an uncalibrated mic-2 channel (dBFS only)}
+    {--with-uncalibrated : Also configure an uncalibrated mic-2 channel (dBFS only; the simulator registers it)}
     {--force : Allow running in production (not recommended)}')]
-#[Description('Provision a synthetic demo account, device, provenance, configuration, and device token (development only)')]
+#[Description('Provision a synthetic demo account, device, placement, configuration, and device token (development only)')]
 class ProvisionDemoDevice extends Command
 {
     public function handle(ProvenanceRecords $provenance, DeviceConfigurationService $configurations, DeviceCredentialService $credentials): int
@@ -78,7 +77,7 @@ class ProvisionDemoDevice extends Command
             'status' => 'active',
         ]);
 
-        $deployment = $provenance->createDeployment($device, [
+        $provenance->createDeployment($device, [
             'room' => 'Front bedroom (demo)',
             'location_type' => 'indoor',
             'placement_description' => 'Synthetic demo placement facing the driveway',
@@ -86,68 +85,24 @@ class ProvisionDemoDevice extends Command
             'effective_at' => now()->subDays(40)->toIso8601String(),
         ], $owner);
 
-        $allMetrics = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
-
-        $profile = $provenance->createProfile($device, [
-            'channel' => 'mic-1',
-            'name' => 'Simulated calibrated channel',
-            'microphone_model' => 'SIMULATED measurement microphone',
-            'microphone_serial' => 'SIM-0001',
-            'sample_rate_hz' => 48000,
-            'gain_db' => 0,
-            'weighting_implementation_version' => 'simulator-weighting-1',
-            'filter_implementation_version' => 'simulator-filters-1',
-            'calibration_state' => CalibrationState::Calibrated,
-            'calibration_application_method' => 'Synthetic offset (simulator)',
-            'supported_metrics' => $allMetrics,
-            'low_frequency_lower_hz' => 20,
-            'low_frequency_upper_hz' => 125,
-            'agent_processing_version' => 'simulator-1.0',
-        ], $owner);
-
-        $calibration = $provenance->createCalibration($device, [
-            'channel' => 'mic-1',
-            'calibration_state' => CalibrationState::Calibrated,
-            'reference_method' => 'Synthetic reference (simulator; not a real calibration)',
-            'reference_level_db' => 94,
-            'reference_frequency_hz' => 1000,
-            'notes' => 'Demo data only.',
-        ], $owner);
-
+        // The (simulated) device registers its own measurement profiles and
+        // calibration on first contact; the configuration carries settings only.
         $settings = $configurations->defaults();
         $settings['relative_enabled'] = true;
         $settings['relative_delta_db'] = 15;
         $settings['channels'] = [[
             'channel' => 'mic-1',
             'enabled' => true,
-            'metrics' => $allMetrics,
+            'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
             'bands_enabled' => false,
-            'measurement_profile_id' => $profile->uuid,
-            'deployment_id' => $deployment->uuid,
-            'calibration_id' => $calibration->uuid,
         ]];
 
         if ($this->option('with-uncalibrated')) {
-            $uncalibrated = $provenance->createProfile($device, [
-                'channel' => 'mic-2',
-                'name' => 'Simulated uncalibrated channel',
-                'microphone_model' => 'SIMULATED USB microphone',
-                'sample_rate_hz' => 48000,
-                'weighting_implementation_version' => 'simulator-weighting-1',
-                'filter_implementation_version' => 'simulator-filters-1',
-                'calibration_state' => CalibrationState::Uncalibrated,
-                'supported_metrics' => ['rms_dbfs'],
-                'agent_processing_version' => 'simulator-1.0',
-            ], $owner);
-
             $settings['channels'][] = [
                 'channel' => 'mic-2',
                 'enabled' => true,
                 'metrics' => ['rms_dbfs'],
                 'bands_enabled' => false,
-                'measurement_profile_id' => $uncalibrated->uuid,
-                'deployment_id' => $deployment->uuid,
-                'calibration_id' => null,
             ];
         }
 

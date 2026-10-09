@@ -22,6 +22,7 @@ enum ErrorCode: string
     case RecordingConflict = 'recording_conflict';
     case RecordingAlreadyVerified = 'recording_already_verified';
     case UploadAttemptMismatch = 'upload_attempt_mismatch';
+    case ProvenanceConflict = 'provenance_conflict';
     case PayloadTooLarge = 'payload_too_large';
     case MalformedJson = 'malformed_json';
     case ValidationFailed = 'validation_failed';
@@ -41,7 +42,7 @@ enum ErrorCode: string
             self::ForbiddenAbility => 403,
             self::NotFound => 404,
             self::BatchConflict, self::MeasurementConflict, self::EventRevisionConflict, self::EventTerminal,
-            self::RecordingConflict, self::RecordingAlreadyVerified, self::UploadAttemptMismatch => 409,
+            self::RecordingConflict, self::RecordingAlreadyVerified, self::UploadAttemptMismatch, self::ProvenanceConflict => 409,
             self::PayloadTooLarge => 413,
             self::MalformedJson, self::ValidationFailed, self::UnsupportedSchemaVersion, self::ClockFutureTimestamp,
             self::OutsideBackfillWindow, self::UnknownProvenance, self::RecordingsDisabled => 422,
@@ -57,7 +58,7 @@ enum ErrorCode: string
             self::RateLimited, self::ServiceUnavailable, self::InternalError => 'backoff',
             self::ClockFutureTimestamp => 'after_clock_sync',
             self::UnknownProvenance => 'after_configuration_refresh',
-            self::InvalidCredentials, self::ForbiddenAbility => 'after_correction',
+            self::InvalidCredentials, self::ForbiddenAbility, self::ProvenanceConflict => 'after_correction',
             self::RecordingAlreadyVerified => 'never',
             default => 'never',
         };

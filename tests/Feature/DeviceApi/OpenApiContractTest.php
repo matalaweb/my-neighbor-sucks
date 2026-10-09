@@ -4,6 +4,7 @@ use App\Http\DeviceApi\ErrorCode;
 use Carbon\CarbonImmutable;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as Router;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Yaml\Yaml;
 use Tests\Support\DeviceFixture;
 
@@ -25,7 +26,6 @@ function deviceFixturePayload(string $name, DeviceFixture $fixture, array $extra
     $json = str_replace('"{{CONFIGURATION_REVISION}}"', (string) $fixture->configuration->revision, $json);
     $json = strtr($json, array_merge([
         '{{BOOT_ID}}' => $fixture->bootId,
-        '{{DEPLOYMENT_ID}}' => $fixture->deployment->uuid,
         '{{PROFILE_ID}}' => $fixture->profile->uuid,
         '{{CALIBRATION_ID}}' => (string) $fixture->calibration?->uuid,
         '{{CONFIGURATION_SHA256}}' => $fixture->configuration->content_hash,
@@ -49,12 +49,14 @@ it('documents every device API route with the right method', function (): void {
     $routes = collect(Router::getRoutes()->getRoutes())
         ->filter(fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/device/'));
 
-    expect($routes)->toHaveCount(10);
+    expect($routes)->toHaveCount(10)
+        ->and($routes->map(fn (Route $route): string => $route->uri())->all())->toContain('api/v1/device/provenance')
+        ->and($paths)->not->toHaveKey('/calibrations/{calibration_uuid}/attachments/{attachment_uuid}');
 
     foreach ($routes as $route) {
         $path = preg_replace(
-            ['/\{eventUuid\}/', '/\{recordingUuid\}/', '/\{calibrationUuid\}/', '/\{attachmentUuid\}/'],
-            ['{event_uuid}', '{recording_uuid}', '{calibration_uuid}', '{attachment_uuid}'],
+            ['/\{eventUuid\}/', '/\{recordingUuid\}/'],
+            ['{event_uuid}', '{recording_uuid}'],
             '/'.substr($route->uri(), strlen('api/v1/device/')),
         );
         $method = strtolower(collect($route->methods())->reject(fn (string $m): bool => $m === 'HEAD')->first());
@@ -97,8 +99,29 @@ it('references only fixture files that exist', function (): void {
 
 describe('request fixtures against the real API', function (): void {
     beforeEach(function (): void {
+        Storage::fake('s3');
         CarbonImmutable::setTestNow('2026-10-08T12:20:00Z');
         $this->fixture = DeviceFixture::create(bands: [20, 25, 31.5, 40, 50, 63, 80, 100, 125]);
+    });
+
+    it('accepts the provenance registration fixture and replays it idempotently', function (): void {
+        $registration = deviceFixturePayload('provenance-registration.json', $this->fixture);
+
+        $this->devicePost($this->fixture, 'provenance', $registration)
+            ->assertOk()
+            ->assertJsonPath('measurement_profiles.0.status', 'created')
+            ->assertJsonPath('calibrations.0.status', 'created');
+
+        $this->devicePost($this->fixture, 'provenance', $registration)
+            ->assertOk()
+            ->assertJsonPath('measurement_profiles.0.status', 'existing')
+            ->assertJsonPath('calibrations.0.status', 'existing');
+    });
+
+    it('serves a configuration without provenance references', function (): void {
+        $response = $this->deviceGet($this->fixture, 'configuration')->assertOk()->assertJsonMissingPath('provenance');
+
+        expect(array_keys($response->json('configuration.channels.0')))->toBe(['channel', 'enabled', 'metrics', 'bands_enabled']);
     });
 
     it('accepts both measurement batch fixtures and replays them idempotently', function (): void {

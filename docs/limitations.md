@@ -50,4 +50,4 @@ This list is deliberately candid. None of these items weaken idempotency, proven
 
 ## Deferred by specification (§21)
 
-Not implemented: automatic engine classification, AI summaries, speech processing, vibration, camera correlation, multi-property maps, native apps, public sharing links, billing, self-service signup, live streaming, remote software updates and external notifications.
+Not implemented: automatic engine classification, AI summaries, speech processing, vibration, camera correlation, multi-property maps, native apps, billing, self-service signup, live streaming, remote software updates and external notifications.

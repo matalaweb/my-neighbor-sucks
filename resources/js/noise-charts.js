@@ -110,9 +110,10 @@ const cursorLine = {
 
 function datasetsFor(config) {
     const datasets = [];
+    const palette = config.theme?.palette ?? PALETTE;
 
     config.series.forEach((series, index) => {
-        const color = PALETTE[index % PALETTE.length];
+        const color = palette[index % palette.length];
 
         datasets.push({
             label: `${config.metric.label} (${config.metric.unit}) — ${series.label}`,
@@ -148,6 +149,12 @@ function datasetsFor(config) {
 function mountTimeChart(canvas, config) {
     const timezone = config.timezone;
     const shortSpan = (config.range.to - config.range.from) <= 6 * 3600 * 1000;
+    // Optional colour overrides (e.g. the public dashboard in dark mode); Chart.js defaults otherwise.
+    const theme = config.theme ?? {};
+    const axisColors = {
+        grid: theme.grid ? { color: theme.grid } : {},
+        ticks: theme.text ? { color: theme.text } : {},
+    };
 
     return new Chart(canvas, {
         type: 'line',
@@ -163,17 +170,21 @@ function mountTimeChart(canvas, config) {
                     type: 'linear',
                     min: config.range.from,
                     max: config.range.to,
+                    grid: axisColors.grid,
                     ticks: {
+                        ...axisColors.ticks,
                         maxTicksLimit: 8,
                         callback: (value) => formatTime(value, timezone, shortSpan),
                     },
                 },
                 y: {
-                    title: { display: true, text: config.metric.axis },
+                    title: { display: true, text: config.metric.axis, ...axisColors.ticks },
+                    grid: axisColors.grid,
+                    ticks: axisColors.ticks,
                 },
             },
             plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: canvas.clientWidth < 500 ? 9 : 12 } } },
+                legend: { position: 'bottom', labels: { ...axisColors.ticks, boxWidth: 12, font: { size: canvas.clientWidth < 500 ? 9 : 12 } } },
                 nmEventOverlay: { events: config.events ?? [] },
                 nmCursor: { at: config.cursor ?? null },
                 tooltip: {

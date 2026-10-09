@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Devices\DeviceConfigurationService;
 use App\Services\Devices\DeviceCredentialService;
 use App\Services\Devices\ProvenanceRecords;
+use App\Services\Devices\RegisterDeviceProvenance;
 use App\Services\Ingestion\ProvenanceResolver;
 use App\Services\Measurements\DashboardSummary;
 use App\Services\Measurements\MeasurementSeries;
@@ -115,15 +116,21 @@ class RunBenchmark extends Command
             $provenance = app(ProvenanceRecords::class);
             $deployment = $provenance->createDeployment($device, ['room' => 'Bench', 'location_type' => 'indoor', 'effective_at' => '2020-01-01T00:00:00Z'], $owner);
             $metrics = array_map(fn (Metric $m): string => $m->value, Metric::cases());
-            $profile = $provenance->createProfile($device, [
-                'channel' => 'mic-1', 'microphone_model' => 'Benchmark mic', 'sample_rate_hz' => 48000,
-                'weighting_implementation_version' => 'bench', 'filter_implementation_version' => 'bench',
-                'calibration_state' => CalibrationState::Calibrated, 'supported_metrics' => $metrics,
-                'agent_processing_version' => 'bench',
-            ], $owner);
-            $calibration = $provenance->createCalibration($device, ['channel' => 'mic-1', 'calibration_state' => CalibrationState::Calibrated, 'reference_method' => 'synthetic benchmark'], $owner);
+            // The device registers its own measurement chain (as POST /provenance does).
+            app(RegisterDeviceProvenance::class)->handle($device, [
+                'schema_version' => 1,
+                'measurement_profiles' => [[
+                    'id' => (string) Str::uuid7(), 'channel' => 'mic-1', 'microphone_model' => 'Benchmark mic', 'sample_rate_hz' => 48000,
+                    'weighting_implementation_version' => 'bench', 'filter_implementation_version' => 'bench',
+                    'calibration_state' => CalibrationState::Calibrated->value, 'supported_metrics' => $metrics,
+                    'agent_processing_version' => 'bench',
+                ]],
+                'calibrations' => [['id' => (string) Str::uuid7(), 'channel' => 'mic-1', 'calibration_state' => CalibrationState::Calibrated->value, 'reference_method' => 'synthetic benchmark']],
+            ]);
+            $profile = $device->measurementProfiles()->sole();
+            $calibration = $device->calibrations()->sole();
             $settings = app(DeviceConfigurationService::class)->defaults();
-            $settings['channels'] = [['channel' => 'mic-1', 'enabled' => true, 'metrics' => $metrics, 'bands_enabled' => false, 'measurement_profile_id' => $profile->uuid, 'deployment_id' => $deployment->uuid, 'calibration_id' => $calibration->uuid]];
+            $settings['channels'] = [['channel' => 'mic-1', 'enabled' => true, 'metrics' => $metrics, 'bands_enabled' => false]];
             app(DeviceConfigurationService::class)->publish($device, $settings, $owner);
             $this->tokens[$device->uuid] = app(DeviceCredentialService::class)->issue($device, $owner)['token'];
             $device->setRelation('benchProvenance', collect([$deployment, $profile, $calibration]));
@@ -209,7 +216,6 @@ class RunBenchmark extends Command
      */
     private function records(Device $device, string $boot, int $firstSequence, CarbonImmutable $start, int $count): array
     {
-        $deployment = $device->deployments()->first();
         $profile = $device->measurementProfiles()->first();
         $calibration = $device->calibrations()->first();
         $revision = (int) $device->configurations()->max('revision');
@@ -220,7 +226,7 @@ class RunBenchmark extends Command
             $records[] = [
                 'boot_id' => $boot, 'sequence' => $firstSequence + $i, 'channel' => 'mic-1',
                 'captured_at' => $start->addSeconds($i)->format('Y-m-d\TH:i:s.v\Z'), 'duration_ms' => 1000,
-                'deployment_id' => $deployment->uuid, 'profile_id' => $profile->uuid, 'calibration_id' => $calibration->uuid,
+                'profile_id' => $profile->uuid, 'calibration_id' => $calibration->uuid,
                 'configuration_revision' => $revision,
                 'laeq_db' => $laeq, 'lafmax_db' => $laeq + 4.2, 'lceq_db' => $laeq + 9.1, 'lcpeak_db' => $laeq + 24.3,
                 'low_frequency_leq_db' => $laeq + 6.5, 'rms_dbfs' => $laeq - 94.0, 'quality_flags' => [], 'bands' => [],

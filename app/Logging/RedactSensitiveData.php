@@ -7,7 +7,7 @@ use Monolog\LogRecord;
 
 /**
  * Monolog tap that redacts device credentials, bearer headers, presigned
- * URL signatures, and invitation tokens from log messages and context.
+ * URL signatures, invitation tokens, and public share links from log messages and context.
  */
 class RedactSensitiveData
 {
@@ -16,6 +16,7 @@ class RedactSensitiveData
         '/(Bearer\s+)[A-Za-z0-9._~+\/=-]+/i' => '$1[REDACTED]',
         '/(X-Amz-(?:Signature|Credential|Security-Token)=)[^&\s"\']+/i' => '$1[REDACTED]',
         '/(invitations\/)[A-Za-z0-9]{20,}/' => '$1[REDACTED]',
+        '/nms_[A-Za-z0-9]{8,}/' => 'nms_[REDACTED]',
     ];
 
     public function __invoke(Logger $logger): void

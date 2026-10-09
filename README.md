@@ -34,6 +34,7 @@ A private Laravel application that receives sound measurements and event recordi
 - **Audio:** event clips only. Presigned uploads go to server-chosen staging keys, are verified independently with SHA-256 and media headers, and are copied to a server-owned final object. Playback uses short-lived authorized URLs.
 - **Reports:** queued PDF summary, CSV measurements, and a ZIP evidence bundle with a SHA-256 manifest built from a frozen selection.
 - **Retention:** per-account policies, staged and retryable deletion, purge tombstones, and keep flags that cannot race with deletion.
+- **Public dashboard:** owners can share a device through a secret, revocable link (`/share/{token}`) to a read-only dashboard with live level, today's stats, charts and recent events with review status. It never shows audio, notes, source labels, placement or the property address; it is rate limited and kept out of search indexes.
 - **Accounts:** an account (household) boundary with owner, reviewer and viewer roles, invitations, and no public registration.
 
 ## Architecture at a glance
@@ -123,7 +124,7 @@ docker compose exec -T -e DB_DATABASE=noise_monitor_test_b app php artisan test 
 
 ## Acceptance walkthrough (spec §20)
 
-1. **Provision.** Sign in as an owner, then create a property and a device. On the device, record a placement, a measurement profile and (if applicable) a calibration, publish a configuration, and issue a credential. Or run `noise:demo:provision`.
+1. **Provision.** Sign in as an owner, then create a property and a device. On the device, record a placement, publish a configuration (optional; the Pi otherwise runs on local defaults), and issue a credential. The Pi registers its own measurement profile and calibration. Or run `noise:demo:provision`.
 2. **Replay a synthetic day.** Run `noise:simulate --token=… --scenario=day --speed=0`. The dashboard shows coverage, freshness and charts once the `queue-default` worker has rebuilt rollups.
 3. **Review.** Open **Events**, choose an event with a *Verified* recording, select **Load player**, and inspect the chart, agent vs server summaries, and provenance.
 4. **Annotate.** Click **Review**, set a status, source label, observed/suspected and confidence, and add notes. This is stored as an append-only annotation.

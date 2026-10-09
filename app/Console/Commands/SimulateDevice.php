@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\CanonicalJson;
 use App\Support\SyntheticAudio;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -12,11 +13,14 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Ramsey\Uuid\Uuid;
 use RuntimeException;
 
 /**
  * Device simulator that exercises the PUBLIC device API only (no direct
- * database access). All acoustic patterns are SYNTHETIC: they test the
+ * database access). Like the real agent, it registers its own measurement
+ * chain (POST /provenance) and runs on local defaults until a configuration
+ * is published. All acoustic patterns are SYNTHETIC: they test the
  * pipeline and never validate source classification.
  */
 #[Signature('noise:simulate
@@ -27,6 +31,7 @@ use RuntimeException;
     {--hours=24 : Hours to replay for the "day" scenario}
     {--seed=42 : Random seed}
     {--speed=1 : Real-time divisor for simulated delays (0 = no waiting)}
+    {--with-uncalibrated : Also register and use an uncalibrated mic-2 channel (dBFS only)}
     {--no-verify-wait : Do not poll recordings until verified}')]
 #[Description('Simulate a Raspberry Pi capture agent against the device API with synthetic data')]
 class SimulateDevice extends Command
@@ -42,12 +47,14 @@ class SimulateDevice extends Command
 
     private const METRICS = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
 
+    private const UNCALIBRATED_CHANNEL = 'mic-2';
+
     private string $bootId;
 
     private int $sequence = 0;
 
-    /** @var array<string, mixed> */
-    private array $config = [];
+    /** Applied configuration revision; null while the device runs on local defaults. */
+    private ?int $configurationRevision = null;
 
     /** @var array<string, mixed> */
     private array $channel = [];
@@ -86,6 +93,7 @@ class SimulateDevice extends Command
 
         try {
             $this->loadConfiguration($token);
+            $this->registerProvenance($token);
             $this->heartbeat($token);
 
             // Lay scenarios out back-to-back on one timeline ending now, so the
@@ -332,10 +340,9 @@ class SimulateDevice extends Command
                 'channel' => $channel['channel'],
                 'captured_at' => $at->format('Y-m-d\TH:i:s.v\Z'),
                 'duration_ms' => 1000,
-                'deployment_id' => $channel['deployment_id'],
-                'profile_id' => $channel['measurement_profile_id'],
+                'profile_id' => $channel['profile_id'],
                 'calibration_id' => $channel['calibration_id'],
-                'configuration_revision' => $this->config['revision'],
+                'configuration_revision' => $this->configurationRevision,
                 'quality_flags' => array_values(array_unique($recordFlags)),
                 'bands' => [],
             ];
@@ -424,36 +431,119 @@ class SimulateDevice extends Command
         }
     }
 
+    /**
+     * The agent measures before any configuration is published (local defaults,
+     * configuration_revision null) and only takes operational settings from it.
+     */
     private function loadConfiguration(string $token): void
     {
         $response = $this->send($token, 'GET', 'configuration');
+
+        if ($response->status() === 404) {
+            $this->line('No configuration published yet; running on local defaults (configuration_revision null).');
+
+            return;
+        }
 
         if ($response->failed()) {
             throw new RuntimeException('Could not fetch configuration: HTTP '.$response->status().' '.$response->json('error.message'));
         }
 
-        $this->config = $response->json('configuration');
-        $profiles = collect($response->json('provenance.measurement_profiles'))->keyBy('id');
+        $this->configurationRevision = (int) $response->json('revision');
+        $configuredChannels = collect($response->json('configuration.channels'))->where('enabled', true)->pluck('channel')->all();
 
-        foreach ($this->config['channels'] as $channel) {
-            if (! $channel['enabled']) {
-                continue;
-            }
+        if (in_array(self::UNCALIBRATED_CHANNEL, $configuredChannels, true)) {
+            $this->input->setOption('with-uncalibrated', true);
+        }
+    }
 
-            $channel['supported_metrics'] = $profiles[$channel['measurement_profile_id']]['supported_metrics'] ?? $channel['metrics'];
+    /**
+     * Register this device's (synthetic) measurement chain, as a real agent does
+     * before sending readings that reference it. IDs are derived from the token and
+     * the record content, so repeated runs against the same device are idempotent.
+     */
+    private function registerProvenance(string $token): void
+    {
+        $namespace = 'noise-simulator:'.hash('sha256', $token).':';
+        $profile = [
+            'channel' => 'mic-1',
+            'name' => 'Simulated calibrated channel',
+            'microphone_model' => 'SIMULATED measurement microphone',
+            'microphone_serial' => 'SIM-0001',
+            'audio_interface' => null,
+            'sample_rate_hz' => 48000,
+            'gain_db' => 0,
+            'gain_description' => null,
+            'weighting_implementation_version' => 'simulator-weighting-1',
+            'filter_implementation_version' => 'simulator-filters-1',
+            'agent_processing_version' => 'simulator-1.0',
+            'calibration_state' => 'calibrated',
+            'calibration_application_method' => 'Synthetic offset (simulator)',
+            'supported_metrics' => self::METRICS,
+            'low_frequency_lower_hz' => 20,
+            'low_frequency_upper_hz' => 125,
+            'band_centers_hz' => [],
+        ];
+        $calibration = [
+            'channel' => 'mic-1',
+            'calibration_state' => 'calibrated',
+            'reference_method' => 'Synthetic reference (simulator; not a real calibration)',
+            'reference_device' => null,
+            'reference_level_db' => 94,
+            'reference_frequency_hz' => 1000,
+            'sensitivity_mv_per_pa' => null,
+            'sensitivity_dbfs_at_94db' => -30.0,
+            'gain_configuration' => null,
+            'application_method' => 'Synthetic offset (simulator)',
+            'performed_at' => null,
+            'performed_by' => null,
+            'notes' => 'Demo data only.',
+            'attachments' => [],
+        ];
+        $uncalibrated = [
+            ...$profile,
+            'channel' => self::UNCALIBRATED_CHANNEL,
+            'name' => 'Simulated uncalibrated channel',
+            'microphone_model' => 'SIMULATED USB microphone',
+            'microphone_serial' => null,
+            'gain_db' => null,
+            'calibration_state' => 'uncalibrated',
+            'calibration_application_method' => null,
+            'supported_metrics' => ['rms_dbfs'],
+        ];
+        $id = fn (string $kind, array $record): string => Uuid::uuid5(Uuid::NAMESPACE_URL, $namespace.$kind.':'.CanonicalJson::hash($record))->toString();
+        $profiles = [['id' => $id('profile', $profile), ...$profile]];
 
-            if ($channel['calibration_state'] === 'uncalibrated') {
-                $this->uncalibratedChannel ??= $channel;
-            } elseif ($this->channel === []) {
-                $this->channel = $channel;
-            }
+        if ($this->option('with-uncalibrated')) {
+            $profiles[] = ['id' => $id('profile', $uncalibrated), ...$uncalibrated];
         }
 
-        if ($this->channel === []) {
-            $this->channel = $this->uncalibratedChannel ?? throw new RuntimeException('The configuration has no enabled channel.');
+        $calibrationId = $id('calibration', $calibration);
+        $response = $this->send($token, 'POST', 'provenance', [
+            'schema_version' => 1,
+            'sent_at' => CarbonImmutable::now()->format('Y-m-d\TH:i:s.v\Z'),
+            'measurement_profiles' => $profiles,
+            'calibrations' => [['id' => $calibrationId, ...$calibration]],
+        ]);
+
+        if ($response->failed()) {
+            throw new RuntimeException('Could not register provenance: HTTP '.$response->status().' '.$response->json('error.code').' '.$response->json('error.message'));
         }
 
-        $this->line(sprintf('Configuration r%d · channel %s (%s) · boot %s', $this->config['revision'], $this->channel['channel'], $this->channel['calibration_state'], $this->bootId));
+        $this->channel = ['channel' => 'mic-1', 'profile_id' => $profiles[0]['id'], 'calibration_id' => $calibrationId, 'calibration_state' => 'calibrated', 'supported_metrics' => self::METRICS];
+
+        if (isset($profiles[1])) {
+            $this->uncalibratedChannel = ['channel' => self::UNCALIBRATED_CHANNEL, 'profile_id' => $profiles[1]['id'], 'calibration_id' => null, 'calibration_state' => 'uncalibrated', 'supported_metrics' => ['rms_dbfs']];
+        }
+
+        $this->line(sprintf(
+            'Provenance %s · configuration %s · channel %s (%s) · boot %s',
+            collect($response->json('measurement_profiles'))->pluck('status')->implode('/'),
+            $this->configurationRevision === null ? 'local defaults' : 'r'.$this->configurationRevision,
+            $this->channel['channel'],
+            $this->channel['calibration_state'],
+            $this->bootId,
+        ));
     }
 
     /**
@@ -483,17 +573,17 @@ class SimulateDevice extends Command
             'pending_audio_bytes' => 0,
             'pending_audio_count' => 0,
             'oldest_pending_capture_at' => null,
-            'desired_config_revision' => $this->config['revision'],
-            'applied_config_revision' => $this->config['revision'],
+            'desired_config_revision' => $this->configurationRevision,
+            'applied_config_revision' => $this->configurationRevision,
             'clock' => $clock ?? ['sync_state' => 'synchronized', 'offset_ms' => 2],
             'recent_dropped_intervals' => 0,
             'last_capture_error' => null,
         ]);
 
-        if ($response->successful() && $response->json('applied_config_revision') !== $this->config['revision']) {
+        if ($this->configurationRevision !== null && $response->successful() && $response->json('applied_config_revision') !== $this->configurationRevision) {
             $this->send($token, 'POST', 'configuration/acknowledgments', [
                 'schema_version' => 1,
-                'revision' => $this->config['revision'],
+                'revision' => $this->configurationRevision,
                 'status' => 'applied',
                 'applied_at' => CarbonImmutable::now()->format('Y-m-d\TH:i:s.v\Z'),
             ]);
@@ -552,10 +642,9 @@ class SimulateDevice extends Command
             'event_id' => $eventId,
             'revision' => $revision,
             'channel' => $this->channel['channel'],
-            'deployment_id' => $this->channel['deployment_id'],
-            'profile_id' => $this->channel['measurement_profile_id'],
+            'profile_id' => $this->channel['profile_id'],
             'calibration_id' => $this->channel['calibration_id'],
-            'configuration_revision' => $this->config['revision'],
+            'configuration_revision' => $this->configurationRevision,
             'detection_state' => $end === null ? 'open' : 'finalized',
             'started_at' => $start->format('Y-m-d\TH:i:s.v\Z'),
             'ended_at' => $end?->format('Y-m-d\TH:i:s.v\Z'),

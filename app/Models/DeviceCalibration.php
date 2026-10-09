@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CalibrationState;
+use App\Enums\ProvenanceSource;
 use App\Models\Concerns\BelongsToAccount;
 use App\Models\Concerns\HasPublicUuid;
 use App\Models\Concerns\IsImmutable;
@@ -22,20 +23,22 @@ class DeviceCalibration extends Model
 
     public const UPDATED_AT = null;
 
-    /** Attachments with this purpose are listed in device provenance and downloadable by the device. */
+    /** Attachments with this purpose are provided by the device when it registers the calibration. */
     public const DEVICE_ATTACHMENT_PURPOSE = 'frequency_response';
 
+    /** Device-registered records keep the UUID the device generated (see ProvenanceRecords). */
     protected $fillable = [
-        'account_id', 'device_id', 'channel', 'revision', 'calibration_state', 'reference_method',
+        'uuid', 'account_id', 'device_id', 'channel', 'revision', 'calibration_state', 'reference_method',
         'reference_device', 'reference_level_db', 'reference_frequency_hz', 'sensitivity_mv_per_pa',
         'sensitivity_dbfs_at_94db', 'gain_configuration', 'application_method', 'correction_metadata',
-        'performed_at', 'performed_by', 'notes', 'content_hash', 'created_by',
+        'performed_at', 'performed_by', 'notes', 'content_hash', 'source', 'created_by',
     ];
 
     protected function casts(): array
     {
         return [
             'calibration_state' => CalibrationState::class,
+            'source' => ProvenanceSource::class,
             'correction_metadata' => 'array',
             'performed_at' => 'immutable_datetime',
         ];

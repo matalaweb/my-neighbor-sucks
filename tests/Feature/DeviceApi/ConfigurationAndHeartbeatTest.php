@@ -3,7 +3,6 @@
 use App\Models\DeviceConfigAcknowledgment;
 use App\Models\DeviceHeartbeat;
 use App\Services\Devices\DeviceConfigurationService;
-use App\Services\Devices\ProvenanceRecords;
 use App\Support\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
@@ -44,7 +43,7 @@ function heartbeat(array $overrides = []): array
     ], $overrides);
 }
 
-it('returns the complete configuration document with hash and provenance', function (): void {
+it('returns the complete configuration document with its hash and no provenance', function (): void {
     $this->deviceGet($this->fixture, 'configuration')
         ->assertOk()
         ->assertHeader('ETag', '"'.$this->fixture->configuration->content_hash.'"')
@@ -52,13 +51,25 @@ it('returns the complete configuration document with hash and provenance', funct
             'revision' => 1,
             'sha256' => $this->fixture->configuration->content_hash,
             'applied_revision' => null,
-            'configuration' => ['revision' => 1, 'reporting_interval_seconds' => 30, 'heartbeat_interval_seconds' => 60, 'recording' => ['pre_roll_seconds' => 10, 'post_roll_seconds' => 30]],
-            'provenance' => [
-                'measurement_profiles' => [['id' => $this->fixture->profile->uuid, 'calibration_state' => 'calibrated']],
-                'deployments' => [['id' => $this->fixture->deployment->uuid]],
-                'calibrations' => [['id' => $this->fixture->calibration->uuid]],
+            'configuration' => [
+                'revision' => 1,
+                'reporting_interval_seconds' => 30,
+                'heartbeat_interval_seconds' => 60,
+                'recording' => ['pre_roll_seconds' => 10, 'post_roll_seconds' => 30],
+                'channels' => [['channel' => 'mic-1', 'enabled' => true, 'bands_enabled' => false]],
             ],
-        ]);
+        ])
+        ->assertJsonMissingPath('provenance')
+        ->assertJsonMissingPath('configuration.channels.0.measurement_profile_id')
+        ->assertJsonMissingPath('configuration.channels.0.deployment_id')
+        ->assertJsonMissingPath('configuration.channels.0.calibration_id');
+});
+
+it('reports that no configuration is published yet', function (): void {
+    $fixture = DeviceFixture::create();
+    $fixture->device->configurations()->delete();
+
+    $this->deviceGet($fixture, 'configuration')->assertNotFound()->assertJsonPath('error.code', 'not_found');
 });
 
 it('keeps a revision pending until acknowledged, records rejections, and keeps history', function (): void {
@@ -134,31 +145,29 @@ it('serves a configuration whose sha256 is reproducible from the served document
         ->and(CanonicalJson::hash($served['configuration']))->toBe($served['sha256']);
 });
 
-it('exposes the calibration chain and microphone identity in provenance', function (): void {
-    $calibration = app(ProvenanceRecords::class)->createCalibration($this->fixture->device, [
-        'channel' => 'mic-1',
+it('republishes a revision written before channels dropped their provenance references', function (): void {
+    $legacy = $this->fixture->configuration->document;
+    $legacy['revision'] = 2;
+    $legacy['channels'][0] += [
+        'measurement_profile_id' => $this->fixture->profile->uuid,
+        'deployment_id' => $this->fixture->deployment->uuid,
+        'calibration_id' => $this->fixture->calibration->uuid,
         'calibration_state' => 'calibrated',
-        'reference_method' => '94 dB / 1 kHz acoustic calibrator',
-        'reference_level_db' => 94,
-        'reference_frequency_hz' => 1000,
-        'sensitivity_dbfs_at_94db' => -25.32,
-        'gain_configuration' => 'UMIK-1 18 dB',
-    ], $this->fixture->owner);
-    $settings = $this->configurations->settingsFromDocument($this->fixture->configuration->document);
-    $settings['channels'][0]['calibration_id'] = $calibration->uuid;
-    $this->configurations->publish($this->fixture->device, $settings, $this->fixture->owner);
+    ];
+    $this->fixture->device->configurations()->create([
+        'account_id' => $this->fixture->account->id,
+        'revision' => 2,
+        'document' => $legacy,
+        'content_hash' => CanonicalJson::hash($legacy),
+        'issued_at' => CarbonImmutable::now(),
+    ]);
 
-    $provenance = $this->deviceGet($this->fixture, 'configuration')->assertOk()->json('provenance');
+    $settings = $this->configurations->settingsFromDocument($legacy);
+    $published = $this->configurations->publish($this->fixture->device, $settings, $this->fixture->owner);
 
-    expect($provenance['measurement_profiles'][0])->toMatchArray(['microphone_model' => 'Dayton UMM-6', 'microphone_serial' => 'SN-123'])
-        ->and($provenance['calibrations'][0])->toMatchArray([
-            'id' => $calibration->uuid,
-            'reference_level_db' => 94.0,
-            'reference_frequency_hz' => 1000.0,
-            'sensitivity_dbfs_at_94db' => -25.32,
-            'gain_configuration' => 'UMIK-1 18 dB',
-            'attachments' => [],
-        ]);
+    expect($settings['channels'])->toBe([['channel' => 'mic-1', 'enabled' => true, 'metrics' => $legacy['channels'][0]['metrics'], 'bands_enabled' => false]])
+        ->and($published->revision)->toBe(3)
+        ->and($published->document['channels'][0])->toBe($settings['channels'][0]);
 });
 
 it('accepts a heartbeat without an acquisition session', function (): void {

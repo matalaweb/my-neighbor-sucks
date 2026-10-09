@@ -64,7 +64,8 @@ Rotation procedure: rotate with a 24 h window → install the new token on the P
 - **Configuration → Publish new revision** creates a complete, immutable document with a SHA-256 hash and validates it against the device's reported capabilities.
 - A revision stays **Pending** until the device acknowledges it. A **Rejected** revision shows its reason, and the device keeps running its previous configuration.
 - **Roll back to this** publishes a new revision that copies an older one; the history stays intact.
-- Profile, placement and calibration changes apply going forward only. Create the new revision, then publish a configuration that references it.
+- Configurations carry operational settings only. The Pi registers its own measurement profiles and calibrations (shown read-only with source **Device**); changing the microphone or calibration on the Pi registers new revisions automatically.
+- Placement changes apply going forward only: record a new placement with the time it took effect. Readings are assigned the placement in effect when they were captured; readings before the first placement show "placement not recorded". Until a configuration is published, the Pi runs on local defaults ("local defaults" instead of a revision).
 
 ## Reading device health
 

@@ -3,12 +3,8 @@
 namespace App\Services\Devices;
 
 use App\Enums\Metric;
-use App\Models\Attachment;
 use App\Models\Device;
-use App\Models\DeviceCalibration;
 use App\Models\DeviceConfiguration;
-use App\Models\DeviceDeployment;
-use App\Models\MeasurementProfile;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Support\CanonicalJson;
@@ -21,19 +17,29 @@ use Illuminate\Validation\ValidationException;
  * Declarative, versioned device configuration (spec §14). Every revision is
  * a complete immutable document with a SHA-256 hash; rollback publishes a new
  * revision copying old values. Desired and applied revisions are tracked
- * separately.
+ * separately. A configuration carries operational settings only: the device
+ * registers its own measurement chain and the server resolves placements, so
+ * channels never reference profiles, placements or calibrations.
  */
 class DeviceConfigurationService
 {
+    public const DEFAULT_CHANNEL = 'mic-1';
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
-     * Default settings for a first configuration.
+     * Default settings for a first configuration, with one channel based on the
+     * device's reported capabilities (or its latest registered profile) when known.
      *
      * @return array<string, mixed>
      */
-    public function defaults(): array
+    public function defaults(?Device $device = null): array
     {
+        $capabilities = $device?->capabilities;
+        $channel = $capabilities['channels'][0] ?? self::DEFAULT_CHANNEL;
+        $profile = $device?->measurementProfiles()->where('channel', $channel)->latest('id')->first();
+        $metrics = $capabilities['metrics'] ?? $profile?->supported_metrics ?? array_map(fn (Metric $metric): string => $metric->value, Metric::cases());
+
         return [
             'reporting_interval_seconds' => config('noise.device_defaults.reporting_interval_seconds'),
             'heartbeat_interval_seconds' => config('noise.device_defaults.heartbeat_interval_seconds'),
@@ -56,7 +62,12 @@ class DeviceConfigurationService
             'local_measurement_retention_days' => 7,
             'local_audio_retention_days' => 7,
             'max_local_disk_percent' => 80,
-            'channels' => [],
+            'channels' => [[
+                'channel' => $channel,
+                'enabled' => true,
+                'metrics' => array_values($metrics),
+                'bands_enabled' => false,
+            ]],
         ];
     }
 
@@ -71,19 +82,11 @@ class DeviceConfigurationService
         $channels = [];
 
         foreach ($settings['channels'] ?? [] as $channel) {
-            $profile = MeasurementProfile::query()->where('device_id', $device->id)->where('uuid', $channel['measurement_profile_id'])->first();
-            $deployment = DeviceDeployment::query()->where('device_id', $device->id)->where('uuid', $channel['deployment_id'])->first();
-            $calibration = empty($channel['calibration_id']) ? null : DeviceCalibration::query()->where('device_id', $device->id)->where('uuid', $channel['calibration_id'])->first();
-
             $channels[] = [
-                'channel' => $profile?->channel ?? $channel['channel'] ?? null,
+                'channel' => (string) ($channel['channel'] ?? ''),
                 'enabled' => (bool) ($channel['enabled'] ?? true),
                 'metrics' => array_values($channel['metrics'] ?? []),
                 'bands_enabled' => (bool) ($channel['bands_enabled'] ?? false),
-                'measurement_profile_id' => $profile?->uuid,
-                'deployment_id' => $deployment?->uuid,
-                'calibration_id' => $calibration?->uuid,
-                'calibration_state' => $profile?->calibration_state->value,
             ];
         }
 
@@ -129,7 +132,7 @@ class DeviceConfigurationService
     }
 
     /**
-     * Validate a document against provisioned provenance and reported capabilities.
+     * Validate a document against the device's reported capabilities (heartbeat).
      *
      * @param  array<string, mixed>  $document
      * @return array{errors: array<string, list<string>>, warnings: list<string>}
@@ -149,7 +152,7 @@ class DeviceConfigurationService
         }
 
         if ($document['channels'] === []) {
-            $errors['channels'][] = 'At least one channel with a measurement profile and placement is required.';
+            $errors['channels'][] = 'At least one channel is required.';
         }
 
         $seen = [];
@@ -157,52 +160,29 @@ class DeviceConfigurationService
         foreach ($document['channels'] as $index => $channel) {
             $path = 'channels.'.$index;
 
-            if ($channel['measurement_profile_id'] === null) {
-                $errors[$path.'.measurement_profile_id'][] = 'Unknown measurement profile.';
-
-                continue;
-            }
-
-            if ($channel['deployment_id'] === null) {
-                $errors[$path.'.deployment_id'][] = 'Unknown placement (deployment).';
-            }
-
-            if (isset($seen[$channel['channel']])) {
+            if (preg_match('/^[A-Za-z0-9._-]{1,32}$/', $channel['channel']) !== 1) {
+                $errors[$path.'.channel'][] = 'Use 1–32 characters of A–Z, a–z, 0–9, ".", "_", "-" (e.g. mic-1).';
+            } elseif (isset($seen[$channel['channel']])) {
                 $errors[$path.'.channel'][] = 'Each channel may appear once.';
             }
 
             $seen[$channel['channel']] = true;
-            $profile = MeasurementProfile::query()->where('uuid', $channel['measurement_profile_id'])->first();
+
+            if ($channel['metrics'] === []) {
+                $errors[$path.'.metrics'][] = 'Choose at least one metric.';
+            }
 
             foreach ($channel['metrics'] as $metric) {
-                if (! $profile->supports(Metric::from($metric))) {
-                    $errors[$path.'.metrics'][] = "{$metric} is not supported by the selected profile.";
-                }
-
-                if (Metric::from($metric)->isAbsolute() && ! $profile->calibration_state->allowsAbsoluteLevels()) {
-                    $errors[$path.'.metrics'][] = "{$metric} is an absolute SPL metric; the selected profile is uncalibrated.";
+                if (Metric::tryFrom((string) $metric) === null) {
+                    $errors[$path.'.metrics'][] = "{$metric} is not a known metric.";
                 }
             }
 
-            if ($profile->calibration_state->allowsAbsoluteLevels() && $channel['calibration_id'] === null) {
-                $errors[$path.'.calibration_id'][] = 'An '.$profile->calibration_state->value.' profile requires a matching calibration record.';
-            }
-
-            if (! $profile->calibration_state->allowsAbsoluteLevels() && $channel['calibration_id'] !== null) {
-                $errors[$path.'.calibration_id'][] = 'An uncalibrated profile must not reference a calibration.';
-            }
-
-            if ($channel['calibration_id'] !== null) {
-                $calibration = DeviceCalibration::query()->where('uuid', $channel['calibration_id'])->first();
-
-                if ($calibration->channel !== $profile->channel || $calibration->calibration_state !== $profile->calibration_state) {
-                    $errors[$path.'.calibration_id'][] = 'Calibration must match the profile channel and calibration state.';
-                }
-            }
-
+            // The device validates against its own registered chain; the server
+            // checks only what the device has reported it can do.
             if ($capabilities !== null) {
                 if (isset($capabilities['channels']) && ! in_array($channel['channel'], $capabilities['channels'], true)) {
-                    $errors[$path.'.channel'][] = 'The device has not reported this channel among its capabilities.';
+                    $errors[$path.'.channel'][] = 'The device has not reported this channel among its capabilities ('.implode(', ', $capabilities['channels']).').';
                 }
 
                 foreach (array_diff($channel['metrics'], $capabilities['metrics'] ?? $channel['metrics']) as $metric) {
@@ -217,8 +197,12 @@ class DeviceConfigurationService
 
         $recording = $document['recording'];
 
-        if ($recording['pre_roll_seconds'] < 0 || $recording['pre_roll_seconds'] > 120 || $recording['post_roll_seconds'] < 0 || $recording['post_roll_seconds'] > 300) {
-            $errors['recording'][] = 'Pre-roll must be 0–120 s and post-roll 0–300 s.';
+        if ($recording['pre_roll_seconds'] < 0 || $recording['pre_roll_seconds'] > 120) {
+            $errors['recording.pre_roll_seconds'][] = 'Pre-roll must be 0–120 s.';
+        }
+
+        if ($recording['post_roll_seconds'] < 0 || $recording['post_roll_seconds'] > 300) {
+            $errors['recording.post_roll_seconds'][] = 'Post-roll must be 0–300 s.';
         }
 
         if ($recording['max_segment_duration_seconds'] < 10 || (int) config('noise.recordings.max_duration_ms') < $recording['max_segment_duration_seconds'] * 1000) {
@@ -253,7 +237,7 @@ class DeviceConfigurationService
     /**
      * @param  array<string, mixed>  $settings
      *
-     * @throws ValidationException
+     * @throws ValidationException keyed by settings paths (see settingsErrors())
      */
     public function publish(Device $device, array $settings, ?User $user, ?string $notes = null, ?int $rollbackOf = null): DeviceConfiguration
     {
@@ -264,7 +248,7 @@ class DeviceConfigurationService
             $result = $this->validate($device, $document);
 
             if ($result['errors'] !== []) {
-                throw ValidationException::withMessages(collect($result['errors'])->mapWithKeys(fn (array $messages, string $key): array => ['data.'.$key => $messages])->all());
+                throw ValidationException::withMessages($this->settingsErrors($result['errors'], $settings));
             }
 
             $configuration = $device->configurations()->create([
@@ -294,9 +278,44 @@ class DeviceConfigurationService
         });
     }
 
-    private static function decimal(mixed $value): ?float
+    /**
+     * Map document validation errors to the settings (form) keys they come from,
+     * e.g. "detection.absolute.level_db" → "absolute_level_db" and
+     * "channels.0.metrics" → "channels.{key of the first channel}.metrics".
+     * Unmapped document paths are kept as they are.
+     *
+     * @param  array<string, list<string>>  $errors
+     * @param  array<string, mixed>  $settings
+     * @return array<string, list<string>>
+     */
+    public function settingsErrors(array $errors, array $settings): array
     {
-        return $value === null ? null : (float) $value;
+        $fields = [
+            'reporting_interval_seconds' => 'reporting_interval_seconds',
+            'heartbeat_interval_seconds' => 'heartbeat_interval_seconds',
+            'recording.pre_roll_seconds' => 'pre_roll_seconds',
+            'recording.post_roll_seconds' => 'post_roll_seconds',
+            'recording.max_segment_duration_seconds' => 'max_segment_duration_seconds',
+            'recording.format' => 'recording_format',
+            'detection.absolute.level_db' => 'absolute_level_db',
+            'detection.baseline_relative.delta_db' => 'relative_delta_db',
+        ];
+        $channelKeys = array_keys($settings['channels'] ?? []);
+        $mapped = [];
+
+        foreach ($errors as $path => $messages) {
+            if (isset($fields[$path])) {
+                $key = $fields[$path];
+            } elseif (preg_match('/^channels\.(\d+)\.(\w+)$/', $path, $matches) === 1 && isset($channelKeys[(int) $matches[1]])) {
+                $key = 'channels.'.$channelKeys[(int) $matches[1]].'.'.$matches[2];
+            } else {
+                $key = $path;
+            }
+
+            $mapped[$key] = [...($mapped[$key] ?? []), ...$messages];
+        }
+
+        return $mapped;
     }
 
     /**
@@ -349,83 +368,13 @@ class DeviceConfigurationService
             'local_measurement_retention_days' => $document['local_retention']['measurement_days'],
             'local_audio_retention_days' => $document['local_retention']['audio_days'],
             'max_local_disk_percent' => $document['local_retention']['max_disk_usage_percent'],
+            // Revisions before 2026-10-09 also carry profile/placement/calibration references; they are dropped.
             'channels' => array_map(fn (array $channel): array => [
-                'channel' => $channel['channel'],
-                'enabled' => $channel['enabled'],
-                'metrics' => $channel['metrics'],
-                'bands_enabled' => $channel['bands_enabled'],
-                'measurement_profile_id' => $channel['measurement_profile_id'],
-                'deployment_id' => $channel['deployment_id'],
-                'calibration_id' => $channel['calibration_id'],
-            ], $document['channels']),
-        ];
-    }
-
-    /**
-     * Provenance records referenced by a configuration, with immutable details,
-     * so the agent can tag readings without guessing.
-     *
-     * @param  array<string, mixed>  $document
-     * @return array<string, list<array<string, mixed>>>
-     */
-    public function provenance(Device $device, array $document): array
-    {
-        $profileIds = array_filter(array_column($document['channels'], 'measurement_profile_id'));
-        $deploymentIds = array_filter(array_column($document['channels'], 'deployment_id'));
-        $calibrationIds = array_filter(array_column($document['channels'], 'calibration_id'));
-
-        return [
-            'measurement_profiles' => MeasurementProfile::query()->where('device_id', $device->id)->whereIn('uuid', $profileIds)->get()->map(fn (MeasurementProfile $profile): array => [
-                'id' => $profile->uuid,
-                'channel' => $profile->channel,
-                'revision' => $profile->revision,
-                'calibration_state' => $profile->calibration_state->value,
-                'microphone_model' => $profile->microphone_model,
-                'microphone_serial' => $profile->microphone_serial,
-                'audio_interface' => $profile->audio_interface,
-                'gain_description' => $profile->gain_description,
-                'calibration_application_method' => $profile->calibration_application_method,
-                'supported_metrics' => $profile->supported_metrics,
-                'sample_rate_hz' => $profile->sample_rate_hz,
-                'gain_db' => $profile->gain_db === null ? null : (float) $profile->gain_db,
-                'low_frequency_band_hz' => $profile->low_frequency_lower_hz === null ? null : [(float) $profile->low_frequency_lower_hz, (float) $profile->low_frequency_upper_hz],
-                'band_definitions' => $profile->band_definitions,
-                'content_hash' => $profile->content_hash,
-            ])->values()->all(),
-            'deployments' => DeviceDeployment::query()->where('device_id', $device->id)->whereIn('uuid', $deploymentIds)->get()->map(fn (DeviceDeployment $deployment): array => [
-                'id' => $deployment->uuid,
-                'revision' => $deployment->revision,
-                'effective_at' => Rfc3339::format($deployment->effective_at),
-                'content_hash' => $deployment->content_hash,
-            ])->values()->all(),
-            'calibrations' => DeviceCalibration::query()->where('device_id', $device->id)->whereIn('uuid', $calibrationIds)->with('attachments')->get()->map(fn (DeviceCalibration $calibration): array => [
-                'id' => $calibration->uuid,
-                'channel' => $calibration->channel,
-                'revision' => $calibration->revision,
-                'calibration_state' => $calibration->calibration_state->value,
-                'reference_method' => $calibration->reference_method,
-                'reference_device' => $calibration->reference_device,
-                'reference_level_db' => self::decimal($calibration->reference_level_db),
-                'reference_frequency_hz' => self::decimal($calibration->reference_frequency_hz),
-                'sensitivity_mv_per_pa' => self::decimal($calibration->sensitivity_mv_per_pa),
-                'sensitivity_dbfs_at_94db' => self::decimal($calibration->sensitivity_dbfs_at_94db),
-                'gain_configuration' => $calibration->gain_configuration,
-                'application_method' => $calibration->application_method,
-                'correction_metadata' => $calibration->correction_metadata,
-                'performed_at' => $calibration->performed_at === null ? null : Rfc3339::format($calibration->performed_at),
-                'attachments' => $calibration->attachments
-                    ->where('purpose', DeviceCalibration::DEVICE_ATTACHMENT_PURPOSE)
-                    ->sortBy('id')
-                    ->map(fn (Attachment $attachment): array => [
-                        'id' => $attachment->uuid,
-                        'purpose' => $attachment->purpose,
-                        'filename' => $attachment->original_filename,
-                        'byte_size' => (int) $attachment->byte_size,
-                        'sha256' => $attachment->sha256,
-                        'download_path' => '/api/v1/device/calibrations/'.$calibration->uuid.'/attachments/'.$attachment->uuid,
-                    ])->values()->all(),
-                'content_hash' => $calibration->content_hash,
-            ])->values()->all(),
+                'channel' => $channel['channel'] ?? self::DEFAULT_CHANNEL,
+                'enabled' => $channel['enabled'] ?? true,
+                'metrics' => $channel['metrics'] ?? [],
+                'bands_enabled' => $channel['bands_enabled'] ?? false,
+            ], $document['channels'] ?? []),
         ];
     }
 }

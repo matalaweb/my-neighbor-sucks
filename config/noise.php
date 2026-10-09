@@ -79,6 +79,13 @@ return [
         'large_bundle_warning_bytes' => 500 * 1024 * 1024,
     ],
 
+    // Public, read-only dashboard links for devices an owner shares.
+    'sharing' => [
+        'requests_per_minute' => 60,
+        'cache_seconds' => 15,
+        'poll_seconds' => 30,
+    ],
+
     'dashboard' => [
         'poll_seconds' => 15,
         'max_points_per_series' => 2000,

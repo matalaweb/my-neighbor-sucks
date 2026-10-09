@@ -57,4 +57,20 @@ class AttachmentStore
 
         return $attachment;
     }
+
+    /**
+     * Store bytes received inline (e.g. a device-provided frequency-response file) like an upload.
+     */
+    public function storeContents(Model $attachable, string $contents, string $originalName, ?string $mimeType, string $purpose, ?User $user): Attachment
+    {
+        $path = tempnam(sys_get_temp_dir(), 'nm-attachment-');
+
+        try {
+            file_put_contents($path, $contents);
+
+            return $this->store($attachable, $path, $originalName, $mimeType, $purpose, $user);
+        } finally {
+            @unlink($path);
+        }
+    }
 }

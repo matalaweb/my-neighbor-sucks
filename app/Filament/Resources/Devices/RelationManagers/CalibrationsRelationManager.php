@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Devices\RelationManagers;
 
-use App\Enums\CalibrationState;
 use App\Models\DeviceCalibration;
 use App\Services\Devices\ProvenanceRecords;
 use App\Services\Storage\AttachmentStore;
@@ -11,12 +10,9 @@ use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\KeyValue;
-use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -24,12 +20,13 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use InvalidArgumentException;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 /**
  * Calibration records. "Calibrated" means a documented measurement chain,
  * not a certified instrument; no accuracy or uncertainty value is invented.
+ * The device registers its calibrations (with its frequency-response file);
+ * owners add field checks and supporting documents.
  */
 class CalibrationsRelationManager extends RelationManager
 {
@@ -43,6 +40,7 @@ class CalibrationsRelationManager extends RelationManager
             TextEntry::make('uuid')->label('Calibration ID')->copyable(),
             TextEntry::make('channel'),
             TextEntry::make('revision'),
+            TextEntry::make('source')->badge(),
             TextEntry::make('calibration_state')->badge(),
             TextEntry::make('reference_method'),
             TextEntry::make('reference_device')->placeholder('—'),
@@ -80,45 +78,12 @@ class CalibrationsRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('channel'),
                 TextColumn::make('revision')->prefix('r'),
+                TextColumn::make('source')->badge(),
                 TextColumn::make('calibration_state')->badge(),
                 TextColumn::make('reference_method'),
                 TextColumn::make('field_checks_count')->counts('fieldChecks')->label('Field checks'),
                 TextColumn::make('attachments_count')->counts('attachments')->label('Files'),
                 TextColumn::make('uuid')->label('ID')->limit(13)->fontFamily('mono')->copyable(),
-            ])
-            ->headerActions([
-                Action::make('create')
-                    ->label('New calibration record')
-                    ->icon('heroicon-o-plus')
-                    ->visible(fn (): bool => $this->canManage())
-                    ->modalWidth('3xl')
-                    ->modalDescription('Record how absolute levels were established. Uploading a frequency-response file alone does not establish absolute SPL calibration.')
-                    ->schema([
-                        TextInput::make('channel')->required()->default('mic-1'),
-                        Radio::make('calibration_state')->options([
-                            CalibrationState::Estimated->value => CalibrationState::Estimated->getLabel(),
-                            CalibrationState::Calibrated->value => CalibrationState::Calibrated->getLabel(),
-                        ])->required(),
-                        TextInput::make('reference_method')->required()->helperText('e.g. "94 dB / 1 kHz acoustic calibrator" or "side-by-side comparison with a Class 2 meter".'),
-                        TextInput::make('reference_device'),
-                        TextInput::make('reference_level_db')->numeric()->suffix('dB'),
-                        TextInput::make('reference_frequency_hz')->numeric()->suffix('Hz'),
-                        TextInput::make('sensitivity_mv_per_pa')->numeric()->suffix('mV/Pa'),
-                        TextInput::make('sensitivity_dbfs_at_94db')->numeric()->suffix('dBFS'),
-                        TextInput::make('gain_configuration'),
-                        TextInput::make('application_method'),
-                        KeyValue::make('correction_metadata'),
-                        DateTimePicker::make('performed_at')->seconds(false),
-                        TextInput::make('performed_by'),
-                        Textarea::make('notes')->rows(3),
-                    ])
-                    ->action(function (array $data): void {
-                        try {
-                            app(ProvenanceRecords::class)->createCalibration($this->getOwnerRecord(), $data, auth()->user());
-                        } catch (InvalidArgumentException $exception) {
-                            Notification::make()->title($exception->getMessage())->danger()->send();
-                        }
-                    }),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -140,14 +105,13 @@ class CalibrationsRelationManager extends RelationManager
                     ->icon('heroicon-o-paper-clip')
                     ->visible(fn (): bool => $this->canManage())
                     ->schema([
+                        // Frequency-response files come from the device with its calibration record.
                         Select::make('purpose')->options([
-                            'frequency_response' => 'Microphone frequency-response file',
                             'certificate' => 'Calibration certificate / documentation',
                             'photo' => 'Photo',
                             'other' => 'Other',
                         ])->required(),
                         FileUpload::make('file')->storeFiles(false)->required()->maxSize(20480),
-                        Toggle::make('acknowledge')->label('I understand a frequency-response file does not by itself establish absolute calibration')->accepted(),
                     ])
                     ->action(function (DeviceCalibration $record, array $data): void {
                         /** @var TemporaryUploadedFile $file */

@@ -18,9 +18,11 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Declarative, versioned configuration. Desired and applied revisions are
@@ -75,11 +77,16 @@ class ConfigurationsRelationManager extends RelationManager
                         $service = app(DeviceConfigurationService::class);
                         $latest = $device->latestConfiguration();
 
-                        return ['data' => $latest ? $service->settingsFromDocument($latest->document) : $service->defaults()];
+                        return ['data' => $latest ? $service->settingsFromDocument($latest->document) : $service->defaults($device)];
                     })
                     ->schema($this->configurationSchema($device))
-                    ->action(function (array $data) use ($device): void {
-                        $configuration = app(DeviceConfigurationService::class)->publish($device, $data['data'], auth()->user(), $data['notes'] ?? null);
+                    ->action(function (array $data, Schema $schema) use ($device): void {
+                        try {
+                            $configuration = app(DeviceConfigurationService::class)->publish($device, $data['data'], auth()->user(), $data['notes'] ?? null);
+                        } catch (ValidationException $exception) {
+                            throw $this->visibleValidationErrors($exception, $schema->getStatePath().'.data.', array_keys(data_get($schema->getRawState(), 'data.channels', [])));
+                        }
+
                         $warnings = app(DeviceConfigurationService::class)->validate($device, $configuration->document)['warnings'];
 
                         Notification::make()
@@ -109,38 +116,92 @@ class ConfigurationsRelationManager extends RelationManager
                     ->visible(fn (DeviceConfiguration $record): bool => auth()->user()->canManage($device->account_id) && $record->revision !== $device->desired_config_revision)
                     ->requiresConfirmation()
                     ->modalDescription('Creates a new revision that copies this revision\'s values. History is kept.')
-                    ->action(function (DeviceConfiguration $record) use ($device): void {
-                        $new = app(DeviceConfigurationService::class)->rollback($device, $record, auth()->user());
+                    ->action(function (DeviceConfiguration $record, Action $action) use ($device): void {
+                        try {
+                            $new = app(DeviceConfigurationService::class)->rollback($device, $record, auth()->user());
+                        } catch (ValidationException $exception) {
+                            $this->notifyValidationErrors($exception, 'Could not roll back to r'.$record->revision);
+                            $action->halt();
+                        }
+
                         Notification::make()->title('Published r'.$new->revision.' (copy of r'.$record->revision.').')->success()->send();
                     }),
             ]);
     }
 
     /**
+     * Publish errors are keyed by settings paths ("pre_roll_seconds",
+     * "channels.0.metrics"); show them on the matching form fields (repeater
+     * items are keyed by UUID in the form state) and always list every message
+     * in a notification, so a failed publish is never silent.
+     *
+     * @param  list<int|string>  $channelItemKeys  repeater item keys in form order
+     */
+    private function visibleValidationErrors(ValidationException $exception, string $fieldPrefix, array $channelItemKeys): ValidationException
+    {
+        $this->notifyValidationErrors($exception, 'The configuration was not published');
+
+        return ValidationException::withMessages(collect($exception->errors())
+            ->mapWithKeys(function (array $messages, string $key) use ($fieldPrefix, $channelItemKeys): array {
+                if (preg_match('/^channels\.(\d+)\.(.+)$/', $key, $matches) === 1 && isset($channelItemKeys[(int) $matches[1]])) {
+                    $key = 'channels.'.$channelItemKeys[(int) $matches[1]].'.'.$matches[2];
+                }
+
+                return [$fieldPrefix.$key => $messages];
+            })
+            ->all());
+    }
+
+    private function notifyValidationErrors(ValidationException $exception, string $title): void
+    {
+        $messages = collect($exception->errors())->flatten()->unique()->values();
+
+        Notification::make()
+            ->title($title)
+            ->body(new HtmlString('<ul class="list-disc ps-4">'.$messages->map(fn (string $message): string => '<li>'.e($message).'</li>')->implode('').'</ul>'))
+            ->danger()
+            ->persistent()
+            ->send();
+    }
+
+    /**
+     * Channel rows carry operational settings only. The device registers its
+     * own measurement chain and the server assigns placements by capture time.
+     *
      * @return array<int, mixed>
      */
     private function configurationSchema(Device $device): array
     {
-        $profiles = $device->measurementProfiles()->orderByDesc('id')->get()->mapWithKeys(fn ($p): array => [$p->uuid => $p->label()])->all();
-        $deployments = $device->deployments()->orderByDesc('revision')->get()->mapWithKeys(fn ($d): array => [$d->uuid => $d->label()])->all();
-        $calibrations = $device->calibrations()->orderByDesc('id')->get()->mapWithKeys(fn ($c): array => [$c->uuid => $c->label()])->all();
+        $reportedChannels = $device->capabilities['channels'] ?? [];
+        $reportedMetrics = $device->capabilities['metrics'] ?? null;
         $metricOptions = collect(Metric::cases())->mapWithKeys(fn (Metric $m): array => [$m->value => $m->labelWithUnit()])->all();
+        // Channels of the current revision stay selectable so a prefilled form never loses its value.
+        $channelOptions = collect([...$reportedChannels, ...array_column($device->latestConfiguration()?->document['channels'] ?? [], 'channel')])
+            ->filter(fn (mixed $channel): bool => is_string($channel) && $channel !== '')
+            ->unique()
+            ->mapWithKeys(fn (string $channel): array => [$channel => in_array($channel, $reportedChannels, true) ? $channel : $channel.' (not reported by the device)'])
+            ->all();
+        $channelField = $reportedChannels === []
+            ? TextInput::make('channel')->default(DeviceConfigurationService::DEFAULT_CHANNEL)->required()->regex('/^[A-Za-z0-9._-]{1,32}$/')
+                ->helperText('The device has not reported its channels yet.')
+            : Select::make('channel')->options($channelOptions)->default($reportedChannels[0])->required()->selectablePlaceholder(false);
 
         return [
             Section::make('Reporting')->schema([
                 TextInput::make('data.reporting_interval_seconds')->label('Upload interval')->numeric()->suffix('s')->required()->minValue(5)->maxValue(300),
                 TextInput::make('data.heartbeat_interval_seconds')->label('Heartbeat interval')->numeric()->suffix('s')->required()->minValue(10)->maxValue(3600),
             ])->columns(2),
-            Section::make('Channels')->schema([
-                Repeater::make('data.channels')->label('')->schema([
-                    Select::make('measurement_profile_id')->label('Measurement profile')->options($profiles)->required(),
-                    Select::make('deployment_id')->label('Placement')->options($deployments)->required(),
-                    Select::make('calibration_id')->label('Calibration')->options($calibrations)->placeholder('None (uncalibrated)'),
-                    Toggle::make('enabled')->default(true),
-                    CheckboxList::make('metrics')->options($metricOptions)->columns(3)->required(),
-                    Toggle::make('bands_enabled')->label('Third-octave bands'),
-                ])->columns(3)->minItems(1)->defaultItems(1),
-            ]),
+            Section::make('Channels')
+                ->description('The device reports its microphone, gain and calibration itself; placements are assigned from the placement history by capture time.')
+                ->schema([
+                    Repeater::make('data.channels')->label('')->schema([
+                        $channelField,
+                        Toggle::make('enabled')->default(true),
+                        Toggle::make('bands_enabled')->label('Third-octave bands'),
+                        CheckboxList::make('metrics')->options($metricOptions)->columns(3)->required()->columnSpanFull()
+                            ->helperText($reportedMetrics === null ? 'The device has not reported its supported metrics yet.' : 'Reported by the device: '.implode(', ', $reportedMetrics).'.'),
+                    ])->columns(3)->minItems(1)->defaultItems(1),
+                ]),
             Section::make('Recording')->schema([
                 Toggle::make('data.recording_enabled')->label('Record event clips'),
                 Select::make('data.recording_format')->options(['audio/flac' => 'FLAC (mono)', 'audio/wav' => 'PCM WAV (mono)'])->required(),

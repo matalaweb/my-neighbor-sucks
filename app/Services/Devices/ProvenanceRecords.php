@@ -3,6 +3,7 @@
 namespace App\Services\Devices;
 
 use App\Enums\CalibrationState;
+use App\Enums\ProvenanceSource;
 use App\Models\CalibrationFieldCheck;
 use App\Models\Device;
 use App\Models\DeviceCalibration;
@@ -19,6 +20,8 @@ use InvalidArgumentException;
  * Creates immutable provenance revisions (placement, measurement profile,
  * calibration) with sequential revision numbers and content hashes. Changes
  * apply prospectively; historical readings keep their original references.
+ * Placements are owner-entered; profiles and calibrations are registered by
+ * the device (owner-created ones remain valid history).
  */
 class ProvenanceRecords
 {
@@ -57,53 +60,20 @@ class ProvenanceRecords
     }
 
     /**
+     * Owner-created profile (legacy; devices now register their own profiles).
+     *
      * @param  array<string, mixed>  $data
      */
     public function createProfile(Device $device, array $data, ?User $user): MeasurementProfile
     {
-        $state = $data['calibration_state'] instanceof CalibrationState ? $data['calibration_state'] : CalibrationState::from($data['calibration_state']);
-        $metrics = array_values($data['supported_metrics'] ?? []);
+        $attributes = $this->profileAttributes($data);
 
-        if (! $state->allowsAbsoluteLevels() && array_diff($metrics, ['rms_dbfs']) !== []) {
-            throw new InvalidArgumentException('An uncalibrated profile can only report rms_dbfs; absolute SPL metrics must stay null.');
-        }
-
-        $bands = array_values(array_filter($data['band_centers_hz'] ?? [], fn ($center): bool => $center !== null && $center !== ''));
-
-        return DB::transaction(function () use ($device, $data, $user, $state, $metrics, $bands): MeasurementProfile {
+        return DB::transaction(function () use ($device, $user, $attributes): MeasurementProfile {
             Device::query()->whereKey($device->id)->lockForUpdate()->first();
 
-            $attributes = [
-                'channel' => $data['channel'],
-                'name' => $data['name'] ?? null,
-                'microphone_model' => $data['microphone_model'],
-                'microphone_serial' => $data['microphone_serial'] ?? null,
-                'audio_interface' => $data['audio_interface'] ?? null,
-                'sample_rate_hz' => (int) $data['sample_rate_hz'],
-                'gain_db' => $data['gain_db'] ?? null,
-                'gain_description' => $data['gain_description'] ?? null,
-                'weighting_implementation_version' => $data['weighting_implementation_version'],
-                'filter_implementation_version' => $data['filter_implementation_version'],
-                'calibration_state' => $state->value,
-                'calibration_application_method' => $data['calibration_application_method'] ?? null,
-                'supported_metrics' => $metrics,
-                'low_frequency_lower_hz' => $data['low_frequency_lower_hz'] ?? null,
-                'low_frequency_upper_hz' => $data['low_frequency_upper_hz'] ?? null,
-                'band_definitions' => $bands === [] ? null : [
-                    'kind' => 'third_octave',
-                    'standard' => $data['band_standard'] ?? 'IEC 61260-1 nominal centres',
-                    'weighting' => $data['band_weighting'] ?? 'Z',
-                    'filter_implementation_version' => $data['filter_implementation_version'],
-                    'bands' => array_map(fn ($center): array => ['center_hz' => (float) $center == (int) $center ? (int) $center : (float) $center], $bands),
-                ],
-                'agent_processing_version' => $data['agent_processing_version'],
-            ];
-
-            $profile = $device->measurementProfiles()->create([
-                ...$attributes,
-                'account_id' => $device->account_id,
-                'revision' => ((int) $device->measurementProfiles()->where('channel', $data['channel'])->max('revision')) + 1,
+            $profile = $this->insertProfile($device, $attributes, [
                 'content_hash' => CanonicalJson::hash($attributes),
+                'source' => ProvenanceSource::Owner,
                 'created_by' => $user?->id,
             ]);
 
@@ -114,45 +84,75 @@ class ProvenanceRecords
     }
 
     /**
+     * Profile registered by the device under its own UUID. The content hash is
+     * computed by the caller over the registered record (see RegisterDeviceProvenance).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function registerDeviceProfile(Device $device, string $uuid, array $data, string $contentHash): MeasurementProfile
+    {
+        $attributes = $this->profileAttributes($data);
+
+        return DB::transaction(function () use ($device, $uuid, $contentHash, $attributes): MeasurementProfile {
+            Device::query()->whereKey($device->id)->lockForUpdate()->first();
+
+            $profile = $this->insertProfile($device, $attributes, [
+                'uuid' => $uuid,
+                'content_hash' => $contentHash,
+                'source' => ProvenanceSource::Device,
+                'created_by' => null,
+            ]);
+
+            $this->audit->record('device.profile.registered', $profile, ['revision' => $profile->revision, 'channel' => $profile->channel], device: $device);
+
+            return $profile;
+        });
+    }
+
+    /**
+     * Owner-created calibration (legacy; devices now register their own calibrations).
+     *
      * @param  array<string, mixed>  $data
      */
     public function createCalibration(Device $device, array $data, ?User $user): DeviceCalibration
     {
-        $state = $data['calibration_state'] instanceof CalibrationState ? $data['calibration_state'] : CalibrationState::from($data['calibration_state']);
+        $attributes = $this->calibrationAttributes($data);
 
-        if ($state === CalibrationState::Uncalibrated) {
-            throw new InvalidArgumentException('Calibration records describe estimated or calibrated chains; uncalibrated profiles need no calibration record.');
-        }
-
-        return DB::transaction(function () use ($device, $data, $user, $state): DeviceCalibration {
+        return DB::transaction(function () use ($device, $user, $attributes): DeviceCalibration {
             Device::query()->whereKey($device->id)->lockForUpdate()->first();
 
-            $attributes = [
-                'channel' => $data['channel'],
-                'calibration_state' => $state->value,
-                'reference_method' => $data['reference_method'],
-                'reference_device' => $data['reference_device'] ?? null,
-                'reference_level_db' => $data['reference_level_db'] ?? null,
-                'reference_frequency_hz' => $data['reference_frequency_hz'] ?? null,
-                'sensitivity_mv_per_pa' => $data['sensitivity_mv_per_pa'] ?? null,
-                'sensitivity_dbfs_at_94db' => $data['sensitivity_dbfs_at_94db'] ?? null,
-                'gain_configuration' => $data['gain_configuration'] ?? null,
-                'application_method' => $data['application_method'] ?? null,
-                'correction_metadata' => $data['correction_metadata'] ?? null,
-                'performed_at' => isset($data['performed_at']) ? CarbonImmutable::parse($data['performed_at'])->utc() : null,
-                'performed_by' => $data['performed_by'] ?? null,
-                'notes' => $data['notes'] ?? null,
-            ];
-
-            $calibration = $device->calibrations()->create([
-                ...$attributes,
-                'account_id' => $device->account_id,
-                'revision' => ((int) $device->calibrations()->where('channel', $data['channel'])->max('revision')) + 1,
+            $calibration = $this->insertCalibration($device, $attributes, [
                 'content_hash' => CanonicalJson::hash([...$attributes, 'performed_at' => $attributes['performed_at']?->format('Y-m-d\TH:i:s.u\Z')]),
+                'source' => ProvenanceSource::Owner,
                 'created_by' => $user?->id,
             ]);
 
-            $this->audit->record('device.calibration.created', $calibration, ['revision' => $calibration->revision, 'state' => $state->value], user: $user);
+            $this->audit->record('device.calibration.created', $calibration, ['revision' => $calibration->revision, 'state' => $attributes['calibration_state']], user: $user);
+
+            return $calibration;
+        });
+    }
+
+    /**
+     * Calibration registered by the device under its own UUID; attachments are stored by the caller.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function registerDeviceCalibration(Device $device, string $uuid, array $data, string $contentHash): DeviceCalibration
+    {
+        $attributes = $this->calibrationAttributes($data);
+
+        return DB::transaction(function () use ($device, $uuid, $contentHash, $attributes): DeviceCalibration {
+            Device::query()->whereKey($device->id)->lockForUpdate()->first();
+
+            $calibration = $this->insertCalibration($device, $attributes, [
+                'uuid' => $uuid,
+                'content_hash' => $contentHash,
+                'source' => ProvenanceSource::Device,
+                'created_by' => null,
+            ]);
+
+            $this->audit->record('device.calibration.registered', $calibration, ['revision' => $calibration->revision, 'state' => $attributes['calibration_state']], device: $device);
 
             return $calibration;
         });
@@ -177,5 +177,105 @@ class ProvenanceRecords
         $this->audit->record('device.calibration.field_check', $check, ['calibration_uuid' => $calibration->uuid], user: $user);
 
         return $check;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function profileAttributes(array $data): array
+    {
+        $state = $data['calibration_state'] instanceof CalibrationState ? $data['calibration_state'] : CalibrationState::from($data['calibration_state']);
+        $metrics = array_values($data['supported_metrics'] ?? []);
+
+        if (! $state->allowsAbsoluteLevels() && array_diff($metrics, ['rms_dbfs']) !== []) {
+            throw new InvalidArgumentException('An uncalibrated profile can only report rms_dbfs; absolute SPL metrics must stay null.');
+        }
+
+        $bands = array_values(array_filter($data['band_centers_hz'] ?? [], fn ($center): bool => $center !== null && $center !== ''));
+
+        return [
+            'channel' => $data['channel'],
+            'name' => $data['name'] ?? null,
+            'microphone_model' => $data['microphone_model'],
+            'microphone_serial' => $data['microphone_serial'] ?? null,
+            'audio_interface' => $data['audio_interface'] ?? null,
+            'sample_rate_hz' => (int) $data['sample_rate_hz'],
+            'gain_db' => $data['gain_db'] ?? null,
+            'gain_description' => $data['gain_description'] ?? null,
+            'weighting_implementation_version' => $data['weighting_implementation_version'],
+            'filter_implementation_version' => $data['filter_implementation_version'],
+            'calibration_state' => $state->value,
+            'calibration_application_method' => $data['calibration_application_method'] ?? null,
+            'supported_metrics' => $metrics,
+            'low_frequency_lower_hz' => $data['low_frequency_lower_hz'] ?? null,
+            'low_frequency_upper_hz' => $data['low_frequency_upper_hz'] ?? null,
+            'band_definitions' => $bands === [] ? null : [
+                'kind' => 'third_octave',
+                'standard' => $data['band_standard'] ?? 'IEC 61260-1 nominal centres',
+                'weighting' => $data['band_weighting'] ?? 'Z',
+                'filter_implementation_version' => $data['filter_implementation_version'],
+                'bands' => array_map(fn ($center): array => ['center_hz' => (float) $center == (int) $center ? (int) $center : (float) $center], $bands),
+            ],
+            'agent_processing_version' => $data['agent_processing_version'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $identity
+     */
+    private function insertProfile(Device $device, array $attributes, array $identity): MeasurementProfile
+    {
+        return $device->measurementProfiles()->create([
+            ...$attributes,
+            ...$identity,
+            'account_id' => $device->account_id,
+            'revision' => ((int) $device->measurementProfiles()->where('channel', $attributes['channel'])->max('revision')) + 1,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function calibrationAttributes(array $data): array
+    {
+        $state = $data['calibration_state'] instanceof CalibrationState ? $data['calibration_state'] : CalibrationState::from($data['calibration_state']);
+
+        if ($state === CalibrationState::Uncalibrated) {
+            throw new InvalidArgumentException('Calibration records describe estimated or calibrated chains; uncalibrated profiles need no calibration record.');
+        }
+
+        return [
+            'channel' => $data['channel'],
+            'calibration_state' => $state->value,
+            'reference_method' => $data['reference_method'],
+            'reference_device' => $data['reference_device'] ?? null,
+            'reference_level_db' => $data['reference_level_db'] ?? null,
+            'reference_frequency_hz' => $data['reference_frequency_hz'] ?? null,
+            'sensitivity_mv_per_pa' => $data['sensitivity_mv_per_pa'] ?? null,
+            'sensitivity_dbfs_at_94db' => $data['sensitivity_dbfs_at_94db'] ?? null,
+            'gain_configuration' => $data['gain_configuration'] ?? null,
+            'application_method' => $data['application_method'] ?? null,
+            'correction_metadata' => $data['correction_metadata'] ?? null,
+            'performed_at' => isset($data['performed_at']) ? CarbonImmutable::parse($data['performed_at'])->utc() : null,
+            'performed_by' => $data['performed_by'] ?? null,
+            'notes' => $data['notes'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $identity
+     */
+    private function insertCalibration(Device $device, array $attributes, array $identity): DeviceCalibration
+    {
+        return $device->calibrations()->create([
+            ...$attributes,
+            ...$identity,
+            'account_id' => $device->account_id,
+            'revision' => ((int) $device->calibrations()->where('channel', $attributes['channel'])->max('revision')) + 1,
+        ]);
     }
 }

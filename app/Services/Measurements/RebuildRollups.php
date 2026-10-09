@@ -83,7 +83,8 @@ class RebuildRollups
             $mask = (int) $row->quality_flags;
 
             $bucket['row_count']++;
-            $bucket['configuration_revisions'][(int) $row->configuration_revision] = true;
+            // Key 0 stands for "local defaults" (no configuration applied); revisions start at 1.
+            $bucket['configuration_revisions'][(int) ($row->configuration_revision ?? 0)] = true;
 
             foreach (QualityFlag::fromMask($mask) as $flag) {
                 $bucket['quality_counts'][$flag->value] = ($bucket['quality_counts'][$flag->value] ?? 0) + 1;
@@ -225,7 +226,7 @@ class RebuildRollups
             }
 
             foreach (json_decode($minute->configuration_revisions ?? '[]', true) as $revision) {
-                $bucket['configuration_revisions'][(int) $revision] = true;
+                $bucket['configuration_revisions'][(int) ($revision ?? 0)] = true;
             }
 
             foreach (json_decode($minute->bands ?? '[]', true) as $band) {
@@ -255,6 +256,7 @@ class RebuildRollups
             $ambiguousMs = array_sum($bucket['ambiguous_intervals']) + ($bucket['ambiguous_ms_total'] ?? 0);
             $revisions = array_keys($bucket['configuration_revisions']);
             sort($revisions);
+            $revisions = array_map(fn (int $revision): ?int => $revision === 0 ? null : $revision, $revisions);
             ksort($bucket['quality_counts']);
             $bands = array_values($bucket['bands']);
             usort($bands, fn (array $a, array $b): int => [$a['center_hz'], $a['weighting']] <=> [$b['center_hz'], $b['weighting']]);
