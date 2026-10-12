@@ -100,7 +100,7 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 id="chart-heading" class="text-lg font-semibold">Sound level over time</h2>
-                <p class="text-sm text-slate-500 dark:text-slate-400">LAeq with the loudest instant in each bucket dashed. Shaded bands are detected events.</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Average loudness (LAeq), with the loudest instant in each period dashed. Shaded bands are detected events.</p>
             </div>
             <div role="group" aria-label="Time range" class="inline-flex self-start rounded-full bg-slate-900/5 p-1 dark:bg-white/10">
                 @foreach ($ranges as $key => $option)
@@ -133,6 +133,8 @@
             <span>Resolution: {{ $dashboard['chart']['resolution']['label'] }}</span>
             <span>Gaps are missing data, not silence.</span>
         </div>
+
+        <x-noise.level-guide class="mt-5 border-t border-slate-200/80 pt-4 dark:border-white/10" />
     </section>
 
     {{-- Events --}}

@@ -39,15 +39,28 @@ enum Metric: string implements HasLabel
         };
     }
 
+    /** Everyday name for people who don't work in acoustics; getLabel() stays the standard term. */
+    public function plainName(): string
+    {
+        return match ($this) {
+            self::LAeq => 'Average loudness',
+            self::LAFmax => 'Loudest moment',
+            self::LCeq => 'Average loudness incl. bass',
+            self::LCpeak => 'Sharpest bang',
+            self::LowFrequencyLeq => 'Low rumble (20–125 Hz)',
+            self::RmsDbfs => 'Raw microphone level',
+        };
+    }
+
     public function description(): string
     {
         return match ($this) {
-            self::LAeq => 'Equivalent A-weighted level over the interval',
-            self::LAFmax => 'Highest fast-time-weighted A-level in the interval',
-            self::LCeq => 'Equivalent C-weighted level over the interval',
-            self::LCpeak => 'Maximum C-weighted instantaneous peak',
-            self::LowFrequencyLeq => 'Unweighted band-limited equivalent level',
-            self::RmsDbfs => 'Digital RMS level relative to full scale (not a sound pressure level)',
+            self::LAeq => 'The steady, typical loudness over the period, weighted the way human ears hear. This is the main number to compare.',
+            self::LAFmax => 'The single loudest instant in the period: a slammed door, a bark, a shout. Always higher than the average.',
+            self::LCeq => 'Like the average, but counting bass fully. Much higher than the average loudness means the sound is bass-heavy (music thump, idling engines).',
+            self::LCpeak => 'The highest instantaneous pressure, for very short sharp sounds like bangs and impacts.',
+            self::LowFrequencyLeq => 'Only the deep bass you feel through walls and windows (subwoofers, engines, HVAC hum).',
+            self::RmsDbfs => 'How hard the microphone is driven, relative to its maximum. Not a real loudness value; shown when no calibration is available.',
         };
     }
 
@@ -81,7 +94,7 @@ enum Metric: string implements HasLabel
 
     public function labelWithUnit(): string
     {
-        return $this->getLabel().' ('.$this->unit().')';
+        return $this->plainName().' — '.$this->getLabel().' ('.$this->unit().')';
     }
 
     /** @return list<self> */

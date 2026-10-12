@@ -38,7 +38,7 @@ it('renders every principal page for an owner', function (): void {
     $this->actingAs($this->fixture->owner);
     $tenant = $this->fixture->account->uuid;
 
-    $this->get("/app/{$tenant}")->assertOk()->assertSee('Latest LAeq')->assertSee('dBA')->assertSee('Max LAFmax');
+    $this->get("/app/{$tenant}")->assertOk()->assertSee('Loudness right now')->assertSee('dBA')->assertSee('Loudest moment')->assertSee('What do these numbers mean?');
     $this->get(DeviceResource::getUrl('index', $this->tenant))->assertOk();
     $this->get(DeviceResource::getUrl('view', ['record' => $this->fixture->device, ...$this->tenant]))->assertOk()->assertSee('Credentials');
     $this->get(NoiseEventResource::getUrl('index', $this->tenant))->assertOk();

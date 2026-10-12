@@ -64,7 +64,7 @@
             {{-- Headline values --}}
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <x-filament::section compact>
-                    <div class="text-xs uppercase tracking-wide text-gray-500">Latest LAeq (1 s)</div>
+                    <div class="text-xs uppercase tracking-wide text-gray-500">Loudness right now</div>
                     @if ($latest === null)
                         <div class="mt-2 text-sm text-gray-500">No readings received yet.</div>
                     @else
@@ -78,7 +78,7 @@
                             @endif
                         </div>
                         <div class="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                            Captured {{ \App\Support\LocalTime::displayShort($latest['captured_at'], $tz) }} ({{ \App\Support\LocalTime::age($latest['captured_at']) }})
+                            Average over the latest second (LAeq) · captured {{ \App\Support\LocalTime::displayShort($latest['captured_at'], $tz) }} ({{ \App\Support\LocalTime::age($latest['captured_at']) }})
                             · received {{ \App\Support\LocalTime::age($latest['received_at']) }}
                         </div>
                         <div class="mt-2 flex flex-wrap gap-1">
@@ -98,16 +98,16 @@
                 </x-filament::section>
 
                 <x-filament::section compact>
-                    <div class="text-xs uppercase tracking-wide text-gray-500">Max LAFmax ({{ $date }})</div>
+                    <div class="text-xs uppercase tracking-wide text-gray-500">Loudest moment ({{ $date }})</div>
                     @forelse ($summary['today'] as $today)
                         <div class="mt-1 text-3xl font-semibold nm-tabular">
                             {{ $today['lafmax_max'] === null ? '—' : number_format($today['lafmax_max'], 1) }} <span class="text-base font-normal">dBA</span>
                         </div>
                         <div class="text-xs text-gray-600 dark:text-gray-300">
-                            Highest fast-weighted A-level over {{ $today['lafmax_valid_minutes'] }} measured min of {{ $today['elapsed_minutes'] < $today['day_minutes'] ? $today['elapsed_minutes'].' elapsed' : $today['day_minutes'] }} min
+                            Single loudest instant (LAFmax) over {{ $today['lafmax_valid_minutes'] }} measured min of {{ $today['elapsed_minutes'] < $today['day_minutes'] ? $today['elapsed_minutes'].' elapsed' : $today['day_minutes'] }} min
                         </div>
                         <div class="text-xs text-gray-600 dark:text-gray-300">
-                            Day LAeq {{ $today['laeq'] === null ? '—' : number_format($today['laeq'], 1).' dBA' }} over {{ $today['laeq_valid_minutes'] }} measured min
+                            Average for the day {{ $today['laeq'] === null ? '—' : number_format($today['laeq'], 1).' dBA' }} (LAeq) over {{ $today['laeq_valid_minutes'] }} measured min
                         </div>
                         @if ($today['calibration_state'])
                             <x-filament::badge class="mt-1" :color="$today['calibration_state']->getColor()" size="sm">{{ $today['calibration_state']->getLabel() }}</x-filament::badge>
@@ -157,6 +157,10 @@
                 </x-filament::section>
             </div>
 
+            <x-filament::section compact>
+                <x-noise.level-guide />
+            </x-filament::section>
+
             {{-- Time chart --}}
             <x-filament::section>
                 <x-slot name="heading">{{ $chart['metric']['axis'] }}</x-slot>
@@ -164,7 +168,7 @@
                 <x-slot name="afterHeader">
                     <div class="flex flex-wrap gap-3 text-sm">
                         @if (\App\Enums\Metric::from($this->metric)->isEnergy())
-                            <label class="flex items-center gap-1"><x-filament::input.checkbox wire:model.live="showMaxima" /> Show LAFmax maxima</label>
+                            <label class="flex items-center gap-1"><x-filament::input.checkbox wire:model.live="showMaxima" /> Show loudest moments (LAFmax)</label>
                         @endif
                         <label class="flex items-center gap-1"><x-filament::input.checkbox wire:model.live="showTable" /> Data table</label>
                     </div>

@@ -46,6 +46,7 @@ it('shows a shared device to anyone with the link', function (): void {
         ->assertSee('Maple Street driveway')
         ->assertSee('Current level (LAeq)')
         ->assertSee('loudest moment')
+        ->assertSee('What do these numbers mean?')
         ->assertSee('Recent events')
         ->assertSee('Unreviewed')
         ->assertSee('Calibrated (documented chain)');
