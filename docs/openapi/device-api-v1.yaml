@@ -658,12 +658,11 @@ components:
     Channel: { type: string, pattern: '^[A-Za-z0-9._-]{1,32}$', examples: [mic-1] }
     MetricName:
       type: string
-      enum: [laeq_db, lafmax_db, lceq_db, lcpeak_db, lzpeak_db, low_frequency_leq_db, rms_dbfs]
+      enum: [laeq_db, lafmax_db, lceq_db, lcpeak_db, low_frequency_leq_db, rms_dbfs]
       description: |
         laeq_db = LAeq (dBA, equivalent A-weighted over the interval);
         lafmax_db = LAFmax (dBA, highest fast-weighted A level);
         lceq_db = LCeq (dBC); lcpeak_db = LCpeak (dBC, max C-weighted instantaneous peak);
-        lzpeak_db = LZpeak (dBZ, max unweighted instantaneous peak; optional, added for collectors 0.3.0+);
         low_frequency_leq_db = unweighted band-limited Leq (dB re 20 µPa; band edges in the profile);
         rms_dbfs = digital RMS relative to full scale (dBFS, never dBA).
     QualityFlag:
@@ -799,7 +798,6 @@ components:
         lafmax_db: { $ref: '#/components/schemas/Level' }
         lceq_db: { $ref: '#/components/schemas/Level' }
         lcpeak_db: { $ref: '#/components/schemas/Level' }
-        lzpeak_db: { $ref: '#/components/schemas/Level' }
         low_frequency_leq_db: { $ref: '#/components/schemas/Level' }
         rms_dbfs:
           type: [number, 'null']
@@ -896,7 +894,6 @@ components:
             lafmax_db: { type: [number, 'null'] }
             lceq_db: { type: [number, 'null'] }
             lcpeak_db: { type: [number, 'null'] }
-            lzpeak_db: { type: [number, 'null'] }
             low_frequency_leq_db: { type: [number, 'null'] }
             rms_dbfs: { type: [number, 'null'] }
             duration_ms: { type: [integer, 'null'], minimum: 0 }

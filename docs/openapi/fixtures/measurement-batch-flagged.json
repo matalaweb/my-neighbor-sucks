@@ -16,11 +16,10 @@
       "lafmax_db": 101.4,
       "lceq_db": 104.0,
       "lcpeak_db": null,
-      "lzpeak_db": null,
       "low_frequency_leq_db": 99.7,
       "rms_dbfs": -0.4,
       "quality_flags": ["clipping"],
-      "null_reasons": { "lcpeak_db": "unreliable", "lzpeak_db": "unreliable" },
+      "null_reasons": { "lcpeak_db": "unreliable" },
       "bands": []
     },
     {
@@ -36,7 +35,6 @@
       "lafmax_db": 75.3,
       "lceq_db": 84.9,
       "lcpeak_db": 96.0,
-      "lzpeak_db": 99.4,
       "low_frequency_leq_db": 83.2,
       "rms_dbfs": -26.5,
       "quality_flags": [],
@@ -59,7 +57,6 @@
       "lafmax_db": null,
       "lceq_db": null,
       "lcpeak_db": null,
-      "lzpeak_db": null,
       "low_frequency_leq_db": null,
       "rms_dbfs": null,
       "quality_flags": ["microphone_disconnected", "incomplete_interval"],

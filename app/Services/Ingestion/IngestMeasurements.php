@@ -175,7 +175,7 @@ class IngestMeasurements
     {
         $columns = [
             'account_id', 'device_id', 'channel', 'boot_id', 'sequence', 'stream_id', 'configuration_revision',
-            'captured_at', 'duration_ms', 'laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db',
+            'captured_at', 'duration_ms', 'laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db',
             'rms_dbfs', 'quality_flags', 'null_reasons', 'bands', 'row_hash', 'batch_id', 'received_at',
         ];
 
@@ -198,7 +198,6 @@ class IngestMeasurements
                     $record->metrics['lafmax_db'],
                     $record->metrics['lceq_db'],
                     $record->metrics['lcpeak_db'],
-                    $record->metrics['lzpeak_db'],
                     $record->metrics['low_frequency_leq_db'],
                     $record->metrics['rms_dbfs'],
                     $record->qualityMask,

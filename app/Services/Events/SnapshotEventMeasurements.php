@@ -158,7 +158,7 @@ class SnapshotEventMeasurements
             ->orderBy('m.boot_id')
             ->get([
                 'm.boot_id', 'm.sequence', 'm.channel', 'm.captured_at', 'm.duration_ms', 'm.configuration_revision',
-                'm.laeq_db', 'm.lafmax_db', 'm.lceq_db', 'm.lcpeak_db', 'm.lzpeak_db', 'm.low_frequency_leq_db', 'm.rms_dbfs',
+                'm.laeq_db', 'm.lafmax_db', 'm.lceq_db', 'm.lcpeak_db', 'm.low_frequency_leq_db', 'm.rms_dbfs',
                 'm.quality_flags', 'm.null_reasons', 'm.bands', 'm.row_hash', 'm.received_at',
                 'd.uuid as deployment_id', 'p.uuid as profile_id', 'c.uuid as calibration_id', 's.calibration_state',
                 'b.uuid as batch_id',
@@ -185,7 +185,6 @@ class SnapshotEventMeasurements
                 'lafmax_db' => $this->float($row->lafmax_db),
                 'lceq_db' => $this->float($row->lceq_db),
                 'lcpeak_db' => $this->float($row->lcpeak_db),
-                'lzpeak_db' => $this->float($row->lzpeak_db),
                 'low_frequency_leq_db' => $this->float($row->low_frequency_leq_db),
                 'rms_dbfs' => $this->float($row->rms_dbfs),
                 'quality_flags' => QualityFlag::valuesFromMask((int) $row->quality_flags),

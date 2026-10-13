@@ -82,8 +82,6 @@ class PublicDeviceDashboard
             ],
             'today' => [
                 'peak' => $todayStream['lafmax_max'] ?? null,
-                'instant_peak' => $todayStream['lcpeak_max'] ?? null,
-                'instant_peak_z' => $todayStream['lzpeak_max'] ?? null,
                 'leq' => $todayStream['laeq'] ?? null,
                 'coverage' => $todayStream === null || $todayStream['elapsed_minutes'] === 0
                     ? null
@@ -136,14 +134,12 @@ class PublicDeviceDashboard
             ->map(function (NoiseEvent $event) use ($timezone): array {
                 $started = $event->started_at->setTimezone($timezone);
                 $peak = $event->server_summary['metrics']['lafmax_db'] ?? $event->agent_summary['lafmax_db'] ?? null;
-                $instantPeak = $event->server_summary['metrics']['lcpeak_db'] ?? $event->agent_summary['lcpeak_db'] ?? null;
 
                 return [
                     'day' => $started->format('l, M j'),
                     'time' => $started->format('g:i:s A'),
                     'duration' => $this->duration($event),
                     'peak' => $peak === null ? null : round((float) $peak, 1),
-                    'instant_peak' => $instantPeak === null ? null : round((float) $instantPeak, 1),
                     'above_baseline' => $event->levelAboveBaseline(),
                     'status' => $event->review_status->value,
                     'status_label' => $event->review_status->getLabel(),

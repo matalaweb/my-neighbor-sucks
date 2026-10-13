@@ -61,7 +61,7 @@ class DashboardSummary
             ->where('bucket_start', '>=', $dayStart->format('Y-m-d H:i:s'))
             ->where('bucket_start', '<', $dayEnd->format('Y-m-d H:i:s'))
             ->groupBy('stream_id')
-            ->selectRaw('stream_id, MAX(lafmax_max) AS lafmax_max, MAX(lcpeak_max) AS lcpeak_max, MAX(lzpeak_max) AS lzpeak_max, SUM(lafmax_valid_ms) AS lafmax_valid_ms, SUM(laeq_energy_sum) AS laeq_energy, SUM(laeq_valid_ms) AS laeq_valid_ms, SUM(covered_ms) AS covered_ms')
+            ->selectRaw('stream_id, MAX(lafmax_max) AS lafmax_max, SUM(lafmax_valid_ms) AS lafmax_valid_ms, SUM(laeq_energy_sum) AS laeq_energy, SUM(laeq_valid_ms) AS laeq_valid_ms, SUM(covered_ms) AS covered_ms')
             ->get()
             ->map(function (object $row) use ($streams, $dayStart, $elapsedEnd, $dayEnd): array {
                 $stream = $streams[$row->stream_id] ?? null;
@@ -71,8 +71,6 @@ class DashboardSummary
                     'calibration_state' => $stream?->calibration_state,
                     'lafmax_max' => $row->lafmax_max === null ? null : round((float) $row->lafmax_max, 1),
                     'lafmax_valid_minutes' => intdiv((int) $row->lafmax_valid_ms, 60000),
-                    'lcpeak_max' => $row->lcpeak_max === null ? null : round((float) $row->lcpeak_max, 1),
-                    'lzpeak_max' => $row->lzpeak_max === null ? null : round((float) $row->lzpeak_max, 1),
                     'laeq' => Decibels::round(Decibels::leq($row->laeq_energy === null ? null : (float) $row->laeq_energy, (int) $row->laeq_valid_ms)),
                     'laeq_valid_minutes' => intdiv((int) $row->laeq_valid_ms, 60000),
                     'elapsed_minutes' => max(0, intdiv($elapsedEnd->getTimestamp() - $dayStart->getTimestamp(), 60)),

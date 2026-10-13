@@ -42,7 +42,6 @@ class MeasurementSeries
         'rms_dbfs' => 'dbfs',
         'lafmax_db' => 'lafmax',
         'lcpeak_db' => 'lcpeak',
-        'lzpeak_db' => 'lzpeak',
     ];
 
     /**

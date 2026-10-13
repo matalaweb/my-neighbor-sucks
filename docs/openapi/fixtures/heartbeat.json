@@ -6,7 +6,7 @@
   "uptime_seconds": 86400,
   "capabilities": {
     "channels": ["mic-1"],
-    "metrics": ["laeq_db", "lafmax_db", "lceq_db", "lcpeak_db", "lzpeak_db", "low_frequency_leq_db", "rms_dbfs"],
+    "metrics": ["laeq_db", "lafmax_db", "lceq_db", "lcpeak_db", "low_frequency_leq_db", "rms_dbfs"],
     "third_octave_bands": true,
     "recording_formats": ["audio/wav", "audio/flac"],
     "max_sample_rate_hz": 48000

@@ -155,7 +155,6 @@ class ExportContext
         $energy = 0.0;
         $energyMs = 0;
         $max = null;
-        $peaks = [];
         $measured = 0;
 
         foreach ($snapshot->decodedRows() as $row) {
@@ -176,23 +175,12 @@ class ExportContext
             if ($row['lafmax_db'] !== null && ! QualityPolicy::excludes(Metric::LAFmax, $mask)) {
                 $max = max($max ?? -INF, $row['lafmax_db']);
             }
-
-            foreach ([Metric::LCpeak, Metric::LZpeak] as $metric) {
-                // Snapshots taken before lzpeak_db existed don't carry the key.
-                $value = $row[$metric->value] ?? null;
-
-                if ($value !== null && ! QualityPolicy::excludes($metric, $mask)) {
-                    $peaks[$metric->value] = max($peaks[$metric->value] ?? -INF, $value);
-                }
-            }
         }
 
         return [
             'laeq_db' => Decibels::leq($energy, $energyMs),
             'laeq_valid_ms' => $energyMs,
             'lafmax_db' => $max,
-            'lcpeak_db' => $peaks['lcpeak_db'] ?? null,
-            'lzpeak_db' => $peaks['lzpeak_db'] ?? null,
             'measured_ms' => $measured * 1000,
             'expected_ms' => $end === null ? null : max(0, ($end - $start) * 1000),
         ];
@@ -207,7 +195,7 @@ class ExportContext
             ->where('bucket_start', '>=', $this->rangeStart->startOfMinute()->format('Y-m-d H:i:s'))
             ->where('bucket_start', '<', $this->rangeEnd->format('Y-m-d H:i:s'))
             ->groupBy('stream_id')
-            ->selectRaw('stream_id, SUM(laeq_energy_sum) as laeq_energy, SUM(laeq_valid_ms) as laeq_valid_ms, SUM(laeq_excluded_ms) as laeq_excluded_ms, MAX(lafmax_max) as lafmax_max, MAX(lcpeak_max) as lcpeak_max, MAX(lzpeak_max) as lzpeak_max, SUM(dbfs_energy_sum) as dbfs_energy, SUM(dbfs_valid_ms) as dbfs_valid_ms, SUM(covered_ms) as covered_ms, SUM(ambiguous_ms) as ambiguous_ms, COUNT(*) as buckets')
+            ->selectRaw('stream_id, SUM(laeq_energy_sum) as laeq_energy, SUM(laeq_valid_ms) as laeq_valid_ms, SUM(laeq_excluded_ms) as laeq_excluded_ms, MAX(lafmax_max) as lafmax_max, SUM(dbfs_energy_sum) as dbfs_energy, SUM(dbfs_valid_ms) as dbfs_valid_ms, SUM(covered_ms) as covered_ms, SUM(ambiguous_ms) as ambiguous_ms, COUNT(*) as buckets')
             ->get()
             ->keyBy('stream_id');
 
@@ -226,8 +214,6 @@ class ExportContext
                 'ambiguous_ms' => (int) ($row->ambiguous_ms ?? 0),
                 'leq' => $row === null ? null : Decibels::leq((float) ($absolute ? $row->laeq_energy : $row->dbfs_energy), (int) ($absolute ? $row->laeq_valid_ms : $row->dbfs_valid_ms)),
                 'lafmax_max' => $absolute && $row?->lafmax_max !== null ? (float) $row->lafmax_max : null,
-                'lcpeak_max' => $absolute && $row?->lcpeak_max !== null ? (float) $row->lcpeak_max : null,
-                'lzpeak_max' => $absolute && $row?->lzpeak_max !== null ? (float) $row->lzpeak_max : null,
             ];
 
             if ($this->selection['scope_type'] === 'range' && $this->coverage[$stream->id]['valid_ms'] < $expectedMs) {

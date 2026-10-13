@@ -1,4 +1,4 @@
-@props(['metrics' => [\App\Enums\Metric::LAeq, \App\Enums\Metric::LAFmax, \App\Enums\Metric::LCpeak, \App\Enums\Metric::LZpeak, \App\Enums\Metric::LCeq, \App\Enums\Metric::LowFrequencyLeq]])
+@props(['metrics' => [\App\Enums\Metric::LAeq, \App\Enums\Metric::LAFmax, \App\Enums\Metric::LCeq, \App\Enums\Metric::LowFrequencyLeq]])
 {{-- Plain-language explainer for owners and visitors who don't work in acoustics. --}}
 <details {{ $attributes->class('group text-sm') }}>
     <summary class="cursor-pointer font-medium select-none">What do these numbers mean?</summary>
@@ -33,7 +33,6 @@
                 <li>Decibels aren't linear: <strong>+10 dB sounds about twice as loud</strong>.</li>
                 <li>A change of 3 dB is just noticeable; 5 dB is clearly noticeable.</li>
                 <li>The loudest moment is always higher than the average. Short spikes are normal; a raised average means sustained noise.</li>
-                <li>Instant peaks run 10–20 dB above the loudest moment for bangs and engine starts. That's normal: they aren't smoothed, and they count bass. A handheld meter's "peak" or "max hold" reading compares with these, not with the average.</li>
                 <li>"Over background" compares a sound with the usual quiet level at this spot, so it means the same thing day or night.</li>
             </ul>
         </div>

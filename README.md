@@ -29,7 +29,7 @@ A private Laravel application that receives sound measurements and event recordi
 ## Features
 
 - **Device API** (`/api/v1/device`, OpenAPI 3.1): measurement batches, event revisions, two-stage recording upload with server-side verification, declarative versioned configuration, heartbeats. Idempotent by design (batch UUIDs, sequence identities, event revisions, recording UUIDs).
-- **Measurements:** explicitly named metrics (LAeq, LAFmax, LCeq, LCpeak, LZpeak, low-frequency Leq, dBFS), quality flags, full provenance (placement, profile, calibration, configuration revision). Energy-correct minute and hour rollups with coverage, a versioned quality policy and gap-aware charts.
+- **Measurements:** explicitly named metrics (LAeq, LAFmax, LCeq, LCpeak, low-frequency Leq, dBFS), quality flags, full provenance (placement, profile, calibration, configuration revision). Energy-correct minute and hour rollups with coverage, a versioned quality policy and gap-aware charts.
 - **Events:** immutable agent revisions; separate detection, data-completeness, review and recording states; measurement snapshots; append-only annotations; keep flags.
 - **Audio:** event clips only. Presigned uploads go to server-chosen staging keys, are verified independently with SHA-256 and media headers, and are copied to a server-owned final object. Playback uses short-lived authorized URLs.
 - **Reports:** queued PDF summary, CSV measurements, and a ZIP evidence bundle with a SHA-256 manifest built from a frozen selection.

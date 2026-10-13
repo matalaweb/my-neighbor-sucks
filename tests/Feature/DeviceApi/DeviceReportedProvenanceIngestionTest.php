@@ -11,7 +11,6 @@ use App\Services\Devices\ProvenanceRecords;
 use App\Services\Events\SnapshotEventMeasurements;
 use App\Services\Exports\BuildEvidenceExport;
 use App\Services\Exports\RequestEvidenceExport;
-use App\Services\Ingestion\MeasurementBatchParser;
 use App\Services\Measurements\RebuildRollups;
 use App\Services\Storage\EvidenceStorage;
 use Carbon\CarbonImmutable;
@@ -100,28 +99,6 @@ it('accepts and ignores a deployment_id from older agents', function (): void {
     expect(MeasurementStream::query()->sole()->device_deployment_id)->toBe($fixture->deployment->id);
 });
 
-it('accepts readings and events from collectors that predate lzpeak_db, and replays them', function (): void {
-    $fixture = DeviceFixture::create(metrics: ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs']);
-    $withoutLzpeak = function (array $record): array {
-        unset($record['lzpeak_db']);
-
-        return $record;
-    };
-    $batch = $fixture->batch($fixture->records(3, $this->start, tweak: $withoutLzpeak));
-    $event = $fixture->event((string) Str::uuid(), 1, $this->start, null);
-    unset($event['summary']['lzpeak_db']);
-
-    $this->devicePost($fixture, 'measurements/batches', $batch)->assertCreated()->assertJson(['inserted_count' => 3]);
-    $this->devicePost($fixture, 'measurements/batches', $batch)->assertOk()->assertJson(['replayed' => true]);
-    $this->devicePost($fixture, 'events', $event)->assertCreated();
-    $this->devicePost($fixture, 'events', $event)->assertOk();
-
-    // The row hash covers only what was sent, exactly as before lzpeak_db existed.
-    $parsed = app(MeasurementBatchParser::class)->parse($batch, CarbonImmutable::parse('2026-10-08T12:20:00Z'));
-    expect(Measurement::query()->whereNotNull('lzpeak_db')->count())->toBe(0)
-        ->and(array_key_exists('lzpeak_db', $parsed->records[0]->canonical))->toBeFalse();
-});
-
 it('keeps owner-created legacy profiles and calibrations valid for ingestion', function (): void {
     $fixture = DeviceFixture::create();
     $provenance = app(ProvenanceRecords::class);
@@ -132,7 +109,7 @@ it('keeps owner-created legacy profiles and calibrations valid for ingestion', f
     ], $fixture->owner);
     $calibration = $provenance->createCalibration($fixture->device, ['channel' => 'mic-1', 'calibration_state' => 'calibrated', 'reference_method' => '94 dB calibrator'], $fixture->owner);
 
-    $record = $fixture->record(1, $this->start, ['profile_id' => $profile->uuid, 'calibration_id' => $calibration->uuid, 'lafmax_db' => null, 'lceq_db' => null, 'lcpeak_db' => null, 'lzpeak_db' => null, 'low_frequency_leq_db' => null]);
+    $record = $fixture->record(1, $this->start, ['profile_id' => $profile->uuid, 'calibration_id' => $calibration->uuid, 'lafmax_db' => null, 'lceq_db' => null, 'lcpeak_db' => null, 'low_frequency_leq_db' => null]);
 
     $this->devicePost($fixture, 'measurements/batches', $fixture->batch([$record]))->assertCreated();
 

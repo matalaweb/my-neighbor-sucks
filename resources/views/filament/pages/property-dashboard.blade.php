@@ -106,11 +106,6 @@
                         <div class="text-xs text-gray-600 dark:text-gray-300">
                             Single loudest instant (LAFmax) over {{ $today['lafmax_valid_minutes'] }} measured min of {{ $today['elapsed_minutes'] < $today['day_minutes'] ? $today['elapsed_minutes'].' elapsed' : $today['day_minutes'] }} min
                         </div>
-                        @if ($today['lcpeak_max'] !== null || $today['lzpeak_max'] !== null)
-                            <div class="text-xs text-gray-600 dark:text-gray-300">
-                                Instant peak {{ $today['lcpeak_max'] === null ? '—' : number_format($today['lcpeak_max'], 1).' dBC' }} (LCpeak) · unweighted {{ $today['lzpeak_max'] === null ? '—' : number_format($today['lzpeak_max'], 1).' dBZ' }} (LZpeak)
-                            </div>
-                        @endif
                         <div class="text-xs text-gray-600 dark:text-gray-300">
                             Average for the day {{ $today['laeq'] === null ? '—' : number_format($today['laeq'], 1).' dBA' }} (LAeq) over {{ $today['laeq_valid_minutes'] }} measured min
                         </div>

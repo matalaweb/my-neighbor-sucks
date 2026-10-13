@@ -51,7 +51,7 @@
 <h2>Actual coverage</h2>
 @if ($scopeType === 'range')
     <table>
-        <tr><th style="width:34%">Stream</th><th>Measured</th><th>Equivalent level</th><th>Maximum LAFmax</th><th>Maximum instant peak</th></tr>
+        <tr><th style="width:40%">Stream</th><th>Measured</th><th>Equivalent level</th><th>Maximum LAFmax</th></tr>
         @forelse ($coverage as $row)
             <tr>
                 <td>{{ $row['label'] }}</td>
@@ -61,10 +61,9 @@
                 </td>
                 <td>{{ $row['leq'] === null ? 'No valid data' : number_format($row['leq'], 1).' '.$row['unit'] }}</td>
                 <td>{{ $row['lafmax_max'] === null ? '—' : number_format($row['lafmax_max'], 1).' dBA' }}</td>
-                <td>LCpeak {{ $row['lcpeak_max'] === null ? '—' : number_format($row['lcpeak_max'], 1).' dBC' }}<br>LZpeak {{ $row['lzpeak_max'] === null ? '—' : number_format($row['lzpeak_max'], 1).' dBZ' }}</td>
             </tr>
         @empty
-            <tr><td colspan="5">No measurement streams in this range.</td></tr>
+            <tr><td colspan="4">No measurement streams in this range.</td></tr>
         @endforelse
     </table>
     <p class="small muted">Missing time is unknown, not silence; it contributes neither energy nor duration. Equivalent levels are energy averages, never arithmetic means of decibels.</p>
@@ -108,8 +107,8 @@
                 <td><span class="mono">{{ $event['short'] }}</span><br>{{ $event['local_start'] }}</td>
                 <td>{{ $event['duration'] }}</td>
                 <td>{{ $event['trigger'] }}<br><span class="small">{{ $event['baseline'] }}</span></td>
-                <td>LAeq {{ $event['agent_laeq'] }}<br>LAFmax {{ $event['agent_lafmax'] }}<br>LCpeak {{ $event['agent_lcpeak'] }}<br>LZpeak {{ $event['agent_lzpeak'] }}</td>
-                <td>LAeq {{ $event['server_laeq'] }}<br>LAFmax {{ $event['server_lafmax'] }}<br>LCpeak {{ $event['server_lcpeak'] }}<br>LZpeak {{ $event['server_lzpeak'] }}</td>
+                <td>LAeq {{ $event['agent_laeq'] }}<br>LAFmax {{ $event['agent_lafmax'] }}</td>
+                <td>LAeq {{ $event['server_laeq'] }}<br>LAFmax {{ $event['server_lafmax'] }}</td>
                 <td>{{ $event['review'] }}<br><span class="small">{{ $event['source'] }}</span></td>
                 <td>{{ $event['completeness'] }}<br><span class="small">{{ $event['recordings'] }}</span></td>
                 <td class="small">{{ $event['flags'] ?: '—' }}</td>

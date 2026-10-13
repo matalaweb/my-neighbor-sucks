@@ -93,7 +93,7 @@ class ProvisionDemoDevice extends Command
         $settings['channels'] = [[
             'channel' => 'mic-1',
             'enabled' => true,
-            'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
+            'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
             'bands_enabled' => false,
         ]];
 

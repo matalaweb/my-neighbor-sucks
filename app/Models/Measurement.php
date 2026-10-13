@@ -30,7 +30,6 @@ class Measurement extends Model
             'lafmax_db' => 'float',
             'lceq_db' => 'float',
             'lcpeak_db' => 'float',
-            'lzpeak_db' => 'float',
             'low_frequency_leq_db' => 'float',
             'rms_dbfs' => 'float',
         ];

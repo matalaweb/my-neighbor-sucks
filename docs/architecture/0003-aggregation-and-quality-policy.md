@@ -20,7 +20,7 @@ Missing time contributes neither energy nor duration.
 * Energy metrics: LAeq, LCeq, low-frequency Leq, RMS dBFS. Rollups store
   `<m>_energy_sum`, `<m>_valid_ms`, `<m>_excluded_ms` per metric so hours
   combine exactly from minutes.
-* Maximum metrics: LAFmax, LCpeak, LZpeak aggregate with `max()` only
+* Maximum metrics: LAFmax, LCpeak aggregate with `max()` only
   (`<m>_max`, `<m>_valid_ms`, `<m>_excluded_ms`). LAFmax is never derived from
   LAeq.
 * Third-octave bands: each (centre, weighting) is energy-averaged over time;

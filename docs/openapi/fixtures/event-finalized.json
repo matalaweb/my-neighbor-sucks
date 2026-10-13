@@ -24,7 +24,6 @@
     "lafmax_db": 101.4,
     "lceq_db": 89.9,
     "lcpeak_db": 104.3,
-    "lzpeak_db": 107.9,
     "low_frequency_leq_db": 86.0,
     "rms_dbfs": -20.2,
     "duration_ms": 12000

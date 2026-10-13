@@ -52,7 +52,7 @@ class RecordHeartbeat
             'capabilities.channels' => ['required', 'array', 'list'],
             'capabilities.channels.*' => ['string', 'max:32'],
             'capabilities.metrics' => ['required', 'array', 'list'],
-            'capabilities.metrics.*' => ['string', 'in:laeq_db,lafmax_db,lceq_db,lcpeak_db,lzpeak_db,low_frequency_leq_db,rms_dbfs'],
+            'capabilities.metrics.*' => ['string', 'in:laeq_db,lafmax_db,lceq_db,lcpeak_db,low_frequency_leq_db,rms_dbfs'],
             'capabilities.third_octave_bands' => ['nullable', 'boolean'],
             'capabilities.recording_formats' => ['nullable', 'array', 'list'],
             'capabilities.recording_formats.*' => ['string', 'in:audio/wav,audio/flac'],
