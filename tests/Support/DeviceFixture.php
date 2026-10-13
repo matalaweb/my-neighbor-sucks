@@ -64,7 +64,7 @@ final class DeviceFixture
 
         $metrics ??= $state === CalibrationState::Uncalibrated
             ? ['rms_dbfs']
-            : ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
+            : ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
 
         // The device registers its own measurement chain (POST /provenance).
         $profileId = (string) Str::uuid7();
@@ -117,7 +117,7 @@ final class DeviceFixture
             'agent_processing_version' => 'agent-0.1.0',
             'calibration_state' => $state->value,
             'calibration_application_method' => null,
-            'supported_metrics' => $metrics ?? ($state === CalibrationState::Uncalibrated ? ['rms_dbfs'] : ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs']),
+            'supported_metrics' => $metrics ?? ($state === CalibrationState::Uncalibrated ? ['rms_dbfs'] : ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs']),
             'low_frequency_lower_hz' => 20,
             'low_frequency_upper_hz' => 125,
             'band_centers_hz' => $bands,
@@ -180,6 +180,7 @@ final class DeviceFixture
             'lafmax_db' => $absolute ? 50.0 : null,
             'lceq_db' => $absolute ? 55.0 : null,
             'lcpeak_db' => $absolute ? 70.0 : null,
+            'lzpeak_db' => $absolute ? 73.0 : null,
             'low_frequency_leq_db' => $absolute ? 52.0 : null,
             'rms_dbfs' => -40.0,
             'quality_flags' => [],
@@ -251,6 +252,7 @@ final class DeviceFixture
                 'lafmax_db' => $absolute ? 82.5 : null,
                 'lceq_db' => null,
                 'lcpeak_db' => null,
+                'lzpeak_db' => null,
                 'low_frequency_leq_db' => null,
                 'rms_dbfs' => -15.0,
                 'duration_ms' => $endedAt ? (int) ($endedAt->getTimestampMs() - $startedAt->getTimestampMs()) : null,

@@ -68,6 +68,9 @@
             <p class="text-sm text-slate-500 dark:text-slate-400">Today's loudest moment</p>
             <p class="mt-2 text-3xl font-semibold tabular-nums">{{ $today['peak'] === null ? '—' : number_format($today['peak'], 1) }}<span class="ml-1 text-base font-normal text-slate-500">dBA</span></p>
             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Max LAFmax since midnight</p>
+            @if ($today['instant_peak'] !== null)
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Instant peak {{ number_format($today['instant_peak'], 1) }} dBC{{ $today['instant_peak_z'] === null ? '' : ' · unweighted '.number_format($today['instant_peak_z'], 1).' dBZ' }}</p>
+            @endif
         </div>
         <div class="{{ $card }} p-5">
             <p class="text-sm text-slate-500 dark:text-slate-400">Today's average</p>
@@ -156,7 +159,7 @@
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-baseline gap-x-2">
                                 <span class="text-sm font-semibold whitespace-nowrap tabular-nums">{{ $event['peak'] === null ? '—' : number_format($event['peak'], 1).' dBA' }}</span>
-                                <span class="text-xs text-slate-500 dark:text-slate-400">peak{{ $event['above_baseline'] === null ? '' : ' · +'.number_format($event['above_baseline'], 1).' dB over background' }}</span>
+                                <span class="text-xs text-slate-500 dark:text-slate-400">loudest moment{{ $event['instant_peak'] === null ? '' : ' · instant peak '.number_format($event['instant_peak'], 1).' dBC' }}{{ $event['above_baseline'] === null ? '' : ' · +'.number_format($event['above_baseline'], 1).' dB over background' }}</span>
                             </div>
                             <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200/70 dark:bg-white/10">
                                 <div class="h-full rounded-full {{ $event['status'] === 'confirmed_disturbance' ? 'bg-rose-500' : 'bg-gradient-to-r from-teal-400 to-sky-500' }}" style="width: {{ $event['peak'] === null ? 0 : max(4, round(100 * $event['peak'] / $maxEventPeak)) }}%"></div>

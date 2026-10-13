@@ -24,7 +24,7 @@ class EventPayloadParser
 
     private const DETECTION_FIELDS = ['rule_version', 'trigger_metric', 'trigger_kind', 'threshold_db', 'trigger_value_db', 'baseline_db', 'baseline_method'];
 
-    private const SUMMARY_FIELDS = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs', 'duration_ms'];
+    private const SUMMARY_FIELDS = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs', 'duration_ms'];
 
     private const RECORDING_FIELDS = ['expected', 'started_at', 'ended_at', 'expected_segments'];
 
@@ -161,6 +161,11 @@ class EventPayloadParser
         $normalizedSummary = [];
 
         foreach (self::SUMMARY_FIELDS as $field) {
+            // Kept in the revision hash only when sent, so retries from collectors before 0.3.0 still match.
+            if ($field === 'lzpeak_db' && ! array_key_exists($field, $summary)) {
+                continue;
+            }
+
             $value = $summary[$field] ?? null;
             $normalizedSummary[$field] = $value === null ? null : ($field === 'duration_ms' ? (int) $value : (float) $value);
         }

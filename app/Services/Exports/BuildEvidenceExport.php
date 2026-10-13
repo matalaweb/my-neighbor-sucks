@@ -451,6 +451,10 @@ class BuildEvidenceExport
                 'agent_lafmax' => $this->db($payload['summary']['lafmax_db'] ?? null),
                 'server_laeq' => $absolute ? $this->db($item['server']['laeq_db'] ?? null) : 'n/a (uncalibrated)',
                 'server_lafmax' => $absolute ? $this->db($item['server']['lafmax_db'] ?? null) : 'n/a (uncalibrated)',
+                'agent_lcpeak' => $this->db($payload['summary']['lcpeak_db'] ?? null),
+                'agent_lzpeak' => $this->db($payload['summary']['lzpeak_db'] ?? null),
+                'server_lcpeak' => $absolute ? $this->db($item['server']['lcpeak_db'] ?? null) : 'n/a (uncalibrated)',
+                'server_lzpeak' => $absolute ? $this->db($item['server']['lzpeak_db'] ?? null) : 'n/a (uncalibrated)',
                 'review' => $review?->review_status?->getLabel() ?? 'Unreviewed',
                 'source' => $review?->source_label ? $review->source_label->getLabel().($review->source_certainty ? ' ('.strtolower($review->source_certainty->getLabel()).')' : '').($review->confidence ? ', '.strtolower($review->confidence->getLabel()).' confidence' : '') : '—',
                 'completeness' => $item['snapshot']?->completeness->getLabel() ?? 'No snapshot',
@@ -656,7 +660,7 @@ class BuildEvidenceExport
         fwrite($handle, CsvEscaper::line([
             'resolution', 'interval_start_utc', 'interval_end_utc', 'interval_start_local', 'event_id', 'device', 'channel', 'boot_id', 'sequence',
             'deployment_id', 'profile_id', 'calibration_id', 'calibration_state', 'configuration_revisions', 'laeq_db', 'lafmax_db', 'lceq_db',
-            'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs', 'valid_ms', 'excluded_ms', 'quality_flags', 'null_reasons', 'row_sha256',
+            'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs', 'valid_ms', 'excluded_ms', 'quality_flags', 'null_reasons', 'row_sha256',
         ]));
 
         if ($context->selection['scope_type'] === 'events') {
@@ -667,7 +671,7 @@ class BuildEvidenceExport
                         'PT1S', Rfc3339::format($start), Rfc3339::format($start->addMilliseconds($row['duration_ms'])), LocalTime::display($start, $context->timezone),
                         $item['model']->uuid, $item['device']?->name, $row['channel'], $row['boot_id'], $row['sequence'], $row['deployment_id'], $row['profile_id'],
                         $row['calibration_id'], $row['calibration_state'], $row['configuration_revision'] ?? self::LOCAL_DEFAULTS, $row['laeq_db'], $row['lafmax_db'], $row['lceq_db'],
-                        $row['lcpeak_db'], $row['low_frequency_leq_db'], $row['rms_dbfs'], $row['duration_ms'], null, implode(' ', $row['quality_flags']),
+                        $row['lcpeak_db'], $row['lzpeak_db'] ?? null, $row['low_frequency_leq_db'], $row['rms_dbfs'], $row['duration_ms'], null, implode(' ', $row['quality_flags']),
                         json_encode($row['null_reasons']), $row['row_sha256'],
                     ]));
                 }
@@ -701,7 +705,7 @@ class BuildEvidenceExport
                                 $stream->device?->name, $stream->channel, null, null, $stream->deployment?->uuid, $stream->profile?->uuid, $stream->calibration?->uuid,
                                 $stream->calibration_state->value, implode(' ', array_map(fn (?int $revision): string => $revision === null ? self::LOCAL_DEFAULTS : (string) $revision, json_decode($row->configuration_revisions ?? '[]', true))),
                                 $leq($row->laeq_energy_sum, (int) $row->laeq_valid_ms), $row->lafmax_max, $leq($row->lceq_energy_sum, (int) $row->lceq_valid_ms),
-                                $row->lcpeak_max, $leq($row->lf_energy_sum, (int) $row->lf_valid_ms), $leq($row->dbfs_energy_sum, (int) $row->dbfs_valid_ms),
+                                $row->lcpeak_max, $row->lzpeak_max, $leq($row->lf_energy_sum, (int) $row->lf_valid_ms), $leq($row->dbfs_energy_sum, (int) $row->dbfs_valid_ms),
                                 $row->laeq_valid_ms, $row->laeq_excluded_ms, $row->quality_counts, null, null,
                             ]));
                         }
@@ -720,7 +724,7 @@ class BuildEvidenceExport
                             'PT1S', Rfc3339::format($start), Rfc3339::format($start->addMilliseconds((int) $row->duration_ms)), LocalTime::display($start, $context->timezone), null,
                             $stream->device?->name, $row->channel, $row->boot_id, $row->sequence, $stream->deployment?->uuid, $stream->profile?->uuid, $stream->calibration?->uuid,
                             $stream->calibration_state->value, $row->configuration_revision ?? self::LOCAL_DEFAULTS, $row->laeq_db, $row->lafmax_db, $row->lceq_db, $row->lcpeak_db,
-                            $row->low_frequency_leq_db, $row->rms_dbfs, $row->duration_ms, null, implode(' ', QualityFlag::valuesFromMask((int) $row->quality_flags)),
+                            $row->lzpeak_db, $row->low_frequency_leq_db, $row->rms_dbfs, $row->duration_ms, null, implode(' ', QualityFlag::valuesFromMask((int) $row->quality_flags)),
                             $row->null_reasons, bin2hex($row->row_hash),
                         ]));
                     }

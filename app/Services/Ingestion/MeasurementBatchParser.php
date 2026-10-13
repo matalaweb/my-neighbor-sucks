@@ -23,7 +23,7 @@ class MeasurementBatchParser
 
     private const RECORD_FIELDS = [
         'boot_id', 'sequence', 'channel', 'captured_at', 'duration_ms', 'deployment_id', 'profile_id',
-        'calibration_id', 'configuration_revision', 'laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db',
+        'calibration_id', 'configuration_revision', 'laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db',
         'low_frequency_leq_db', 'rms_dbfs', 'quality_flags', 'bands', 'null_reasons',
     ];
 
@@ -266,6 +266,11 @@ class MeasurementBatchParser
         // Kept in the row hash only when sent, so retries from older agents still match stored rows.
         if ($legacyDeploymentUuid !== null) {
             $canonical['deployment_id'] = $legacyDeploymentUuid;
+        }
+
+        // Same for metrics added after schema_version 1 shipped (collectors before 0.3.0 omit lzpeak_db).
+        if (! array_key_exists(Metric::LZpeak->value, $raw)) {
+            unset($canonical[Metric::LZpeak->value]);
         }
 
         return new MeasurementRecord(

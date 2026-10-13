@@ -119,7 +119,7 @@ it('keeps estimated and calibrated series in separate streams', function (): voi
     $profile = $estimated->createProfile($this->fixture->device, [
         'channel' => 'mic-1', 'microphone_model' => 'Dayton UMM-6', 'sample_rate_hz' => 48000,
         'weighting_implementation_version' => 'a', 'filter_implementation_version' => 'f',
-        'calibration_state' => CalibrationState::Estimated, 'supported_metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
+        'calibration_state' => CalibrationState::Estimated, 'supported_metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
         'agent_processing_version' => 'agent-0.1.0',
     ], $this->fixture->owner);
     $calibration = $estimated->createCalibration($this->fixture->device, [

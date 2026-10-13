@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  * buckets from minute buckets (spec §11).
  *
  * Equivalent-level metrics keep energy_sum and valid duration separately so
- * hours combine exactly from minutes; LAFmax/LCpeak combine with max().
+ * hours combine exactly from minutes; LAFmax/LCpeak/LZpeak combine with max().
  * Missing time contributes nothing. Intervals reported by more than one
  * boot/stream for a channel are ambiguous and excluded.
  */
@@ -28,7 +28,7 @@ class RebuildRollups
 
     private const ENERGY = ['laeq' => 'laeq_db', 'lceq' => 'lceq_db', 'lf' => 'low_frequency_leq_db', 'dbfs' => 'rms_dbfs'];
 
-    private const MAXIMA = ['lafmax' => 'lafmax_db', 'lcpeak' => 'lcpeak_db'];
+    private const MAXIMA = ['lafmax' => 'lafmax_db', 'lcpeak' => 'lcpeak_db', 'lzpeak' => 'lzpeak_db'];
 
     public function __construct(private readonly MaintenanceQueue $maintenance) {}
 

@@ -14,6 +14,7 @@ enum Metric: string implements HasLabel
     case LAFmax = 'lafmax_db';
     case LCeq = 'lceq_db';
     case LCpeak = 'lcpeak_db';
+    case LZpeak = 'lzpeak_db';
     case LowFrequencyLeq = 'low_frequency_leq_db';
     case RmsDbfs = 'rms_dbfs';
 
@@ -24,6 +25,7 @@ enum Metric: string implements HasLabel
             self::LAFmax => 'LAFmax',
             self::LCeq => 'LCeq',
             self::LCpeak => 'LCpeak',
+            self::LZpeak => 'LZpeak',
             self::LowFrequencyLeq => 'Low-frequency Leq',
             self::RmsDbfs => 'RMS level',
         };
@@ -34,6 +36,7 @@ enum Metric: string implements HasLabel
         return match ($this) {
             self::LAeq, self::LAFmax => 'dBA',
             self::LCeq, self::LCpeak => 'dBC',
+            self::LZpeak => 'dBZ',
             self::LowFrequencyLeq => 'dB re 20 µPa',
             self::RmsDbfs => 'dBFS',
         };
@@ -46,7 +49,8 @@ enum Metric: string implements HasLabel
             self::LAeq => 'Average loudness',
             self::LAFmax => 'Loudest moment',
             self::LCeq => 'Average loudness incl. bass',
-            self::LCpeak => 'Sharpest bang',
+            self::LCpeak => 'Instant peak',
+            self::LZpeak => 'Instant peak, unweighted',
             self::LowFrequencyLeq => 'Low rumble (20–125 Hz)',
             self::RmsDbfs => 'Raw microphone level',
         };
@@ -58,7 +62,8 @@ enum Metric: string implements HasLabel
             self::LAeq => 'The steady, typical loudness over the period, weighted the way human ears hear. This is the main number to compare.',
             self::LAFmax => 'The single loudest instant in the period: a slammed door, a bark, a shout. Always higher than the average.',
             self::LCeq => 'Like the average, but counting bass fully. Much higher than the average loudness means the sound is bass-heavy (music thump, idling engines).',
-            self::LCpeak => 'The highest instantaneous pressure, for very short sharp sounds like bangs and impacts.',
+            self::LCpeak => 'The highest instantaneous sound pressure, C-weighted as in most meters\' peak mode. Not smoothed, so bangs, slams and engine starts read well above the loudest moment.',
+            self::LZpeak => 'Like the instant peak, but with no weighting: deep bass counts fully. Compare this with a handheld meter\'s Z-peak.',
             self::LowFrequencyLeq => 'Only the deep bass you feel through walls and windows (subwoofers, engines, HVAC hum).',
             self::RmsDbfs => 'How hard the microphone is driven, relative to its maximum. Not a real loudness value; shown when no calibration is available.',
         };
@@ -69,7 +74,7 @@ enum Metric: string implements HasLabel
     {
         return match ($this) {
             self::LAeq, self::LCeq, self::LowFrequencyLeq, self::RmsDbfs => true,
-            self::LAFmax, self::LCpeak => false,
+            self::LAFmax, self::LCpeak, self::LZpeak => false,
         };
     }
 
@@ -87,6 +92,7 @@ enum Metric: string implements HasLabel
             self::LAFmax => 'lafmax',
             self::LCeq => 'lceq',
             self::LCpeak => 'lcpeak',
+            self::LZpeak => 'lzpeak',
             self::LowFrequencyLeq => 'lf',
             self::RmsDbfs => 'dbfs',
         };

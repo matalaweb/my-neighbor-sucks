@@ -45,7 +45,7 @@ class SimulateDevice extends Command
         'delayed-event' => 120, 'delayed-recording' => 120, 'day' => 0,
     ];
 
-    private const METRICS = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
+    private const METRICS = ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'];
 
     private const UNCALIBRATED_CHANNEL = 'mic-2';
 
@@ -323,7 +323,8 @@ class SimulateDevice extends Command
                 'laeq_db' => round($laeq, 2),
                 'lafmax_db' => round($laeq + 3.5 + abs($this->noise(2.0)), 2),
                 'lceq_db' => round($laeq + 7.0 + $this->noise(1.0), 2),
-                'lcpeak_db' => round($laeq + 22.0 + abs($this->noise(3.0)), 2),
+                'lcpeak_db' => $lcpeak = round($laeq + 22.0 + abs($this->noise(3.0)), 2),
+                'lzpeak_db' => round($lcpeak + 2.0 + abs($this->noise(1.5)), 2),
                 'low_frequency_leq_db' => round($laeq + $lowFrequencyBoost + $this->noise(1.0), 2),
                 'rms_dbfs' => round(min(0.0, $laeq - 104.0), 2),
             ];
@@ -662,6 +663,7 @@ class SimulateDevice extends Command
                 'lafmax_db' => $absolute && $end ? round($peak, 1) : null,
                 'lceq_db' => null,
                 'lcpeak_db' => null,
+                'lzpeak_db' => null,
                 'low_frequency_leq_db' => null,
                 'rms_dbfs' => null,
                 'duration_ms' => $end ? (int) ($end->getTimestampMs() - $start->getTimestampMs()) : null,

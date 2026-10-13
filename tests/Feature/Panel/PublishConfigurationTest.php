@@ -22,7 +22,7 @@ beforeEach(function (): void {
     $this->fixture = DeviceFixture::create();
     $this->fixture->device->forceFill(['capabilities' => [
         'channels' => ['mic-1'],
-        'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
+        'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
         'third_octave_bands' => false,
         'recording_formats' => ['audio/wav', 'audio/flac'],
     ]])->save();
@@ -50,7 +50,7 @@ it('publishes channel settings without profile, placement or calibration selects
     $document = $this->fixture->device->configurations()->where('revision', 2)->sole()->document;
 
     expect($document['reporting_interval_seconds'])->toBe(60)
-        ->and($document['channels'])->toBe([['channel' => 'mic-1', 'enabled' => true, 'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'], 'bands_enabled' => false]]);
+        ->and($document['channels'])->toBe([['channel' => 'mic-1', 'enabled' => true, 'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'], 'bands_enabled' => false]]);
 });
 
 it('prefills the form from a revision that still references profiles, placements and calibrations', function (): void {
@@ -97,7 +97,7 @@ it('shows every publish validation error on its field and in a notification', fu
     Notification::assertNotified(
         Notification::make()
             ->title('The configuration was not published')
-            ->body(new HtmlString('<ul class="list-disc ps-4"><li>The device has not reported support for lafmax_db.</li><li>The device has not reported support for lceq_db.</li><li>The device has not reported support for lcpeak_db.</li><li>The device has not reported support for low_frequency_leq_db.</li><li>Pre-roll must be 0–120 s.</li><li>Choose a level for the absolute rule, or disable it.</li></ul>'))
+            ->body(new HtmlString('<ul class="list-disc ps-4"><li>The device has not reported support for lafmax_db.</li><li>The device has not reported support for lceq_db.</li><li>The device has not reported support for lcpeak_db.</li><li>The device has not reported support for lzpeak_db.</li><li>The device has not reported support for low_frequency_leq_db.</li><li>Pre-roll must be 0–120 s.</li><li>Choose a level for the absolute rule, or disable it.</li></ul>'))
             ->danger()
             ->persistent(),
     );

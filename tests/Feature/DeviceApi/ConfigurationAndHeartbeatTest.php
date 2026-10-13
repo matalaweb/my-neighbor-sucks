@@ -24,7 +24,7 @@ function heartbeat(array $overrides = []): array
         'uptime_seconds' => 3600,
         'capabilities' => [
             'channels' => ['mic-1'],
-            'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
+            'metrics' => ['laeq_db', 'lafmax_db', 'lceq_db', 'lcpeak_db', 'lzpeak_db', 'low_frequency_leq_db', 'rms_dbfs'],
             'third_octave_bands' => false,
             'recording_formats' => ['audio/wav', 'audio/flac'],
         ],
